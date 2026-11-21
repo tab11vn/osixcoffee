@@ -1,0 +1,4458 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>O'SIX Coffee - Hệ Thống Lên Đơn & Quản Lý Quán Cafe</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- html2canvas để xuất hóa đơn ra ảnh JPG -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <!-- Supabase JS client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            espresso: {
+              50: '#FBF8F6',
+              100: '#F4EDE8',
+              200: '#E6D6CC',
+              300: '#D2B5A3',
+              400: '#B88B72',
+              500: '#9E694D',
+              600: '#825038',
+              700: '#653C2A',
+              800: '#4A2B1E',
+              900: '#361E15',
+            },
+            cream: {
+              50: '#FDFBF7',
+              100: '#FAF5EC',
+              200: '#F3E8D6',
+              300: '#E8D5B7',
+            },
+            matcha: {
+              50: '#F3F8F4',
+              100: '#E1EFE5',
+              500: '#558B6E',
+              600: '#437259',
+              700: '#355B47',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* Tùy chỉnh thanh cuộn mượt mà và tinh tế */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #D2B5A3;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #9E694D;
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* Chế độ in hóa đơn */
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      #receipt-printable, #receipt-printable * {
+        visibility: visible;
+      }
+      #receipt-printable {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 100%;
+        max-width: 80mm;
+        margin: 0 auto;
+        padding: 12px;
+        background: #ffffff;
+        color: #000000;
+        box-shadow: none !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-cream-100 text-espresso-900 font-sans antialiased selection:bg-espresso-200 selection:text-espresso-900 overflow-x-hidden">
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none max-w-[90vw] sm:max-w-sm"></div>
+
+  <!-- Top Navigation Header -->
+  <header class="sticky top-0 z-30 bg-espresso-900 text-cream-50 shadow-md">
+    <div class="max-w-[1600px] mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-3">
+      <!-- Brand Logo -->
+      <div class="flex items-center gap-2.5 shrink-0">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-espresso-600 flex items-center justify-center shadow-inner text-white">
+          <i data-lucide="coffee" class="w-6 h-6"></i>
+        </div>
+        <div class="hidden sm:block">
+          <h1 class="font-bold text-base sm:text-lg tracking-tight leading-tight text-cream-50">O'SIX Coffee</h1>
+          <p class="text-[11px] text-espresso-300">Hệ thống POS & Lên đơn mang đi</p>
+        </div>
+      </div>
+
+      <!-- View Switcher Tabs (Thanh công cụ) -->
+      <nav class="flex items-center bg-espresso-800/90 p-1 rounded-xl border border-espresso-700 overflow-x-auto no-scrollbar">
+        <button
+          id="nav-pos-btn"
+          onclick="switchMainView('pos')"
+          class="shrink-0 flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-amber-600 text-white shadow-sm"
+        >
+          <i data-lucide="layout-grid" class="w-4 h-4"></i>
+          <span>Lên đơn</span>
+        </button>
+
+        <button
+          id="nav-ingredients-btn"
+          onclick="switchMainView('ingredients')"
+          class="shrink-0 flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all text-espresso-200 hover:text-white"
+        >
+          <i data-lucide="package-plus" class="w-4 h-4"></i>
+          <span>Nhập nguyên liệu</span>
+          <span id="header-ingredient-count" class="bg-espresso-700 text-emerald-300 text-[11px] px-1.5 py-0.5 rounded-full font-bold">0</span>
+        </button>
+
+        <button
+          id="nav-history-btn"
+          onclick="switchMainView('history')"
+          class="shrink-0 flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all text-espresso-200 hover:text-white"
+        >
+          <i data-lucide="receipt-text" class="w-4 h-4"></i>
+          <span>Lịch sử đơn</span>
+          <span id="header-order-count" class="bg-espresso-700 text-amber-300 text-[11px] px-1.5 py-0.5 rounded-full font-bold">0</span>
+        </button>
+      </nav>
+
+      <!-- Live Clock & Quick Revenue Pill (Desktop) -->
+      <div class="hidden xl:flex items-center gap-3 text-xs">
+        <div class="bg-espresso-800/80 border border-espresso-700 px-3 py-1.5 rounded-xl flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="text-espresso-200">Doanh thu hôm nay:</span>
+          <span id="header-today-revenue" class="font-bold text-amber-400 text-sm">0đ</span>
+        </div>
+        <div id="live-clock" class="text-espresso-200 font-medium tabular-nums"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== VIEW 1: POS ORDERING SCREEN ==================== -->
+  <main id="view-pos" class="max-w-[1600px] mx-auto flex flex-col lg:flex-row min-h-[calc(100vh-4rem)]">
+    
+    <!-- Left / Main Area: Search, Category Tabs & Menu Grid -->
+    <section class="flex-1 p-3 sm:p-5 lg:p-6 pb-28 lg:pb-8 flex flex-col gap-4 min-w-0">
+      
+      <!-- Search & Quick Filter Bar -->
+      <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+        <div class="relative flex-1">
+          <i data-lucide="search" class="w-4 h-4 text-espresso-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+          <input
+            type="text"
+            id="search-input"
+            placeholder="Tìm nhanh tên món (VD: Cà phê muối, Matcha, Trà đào...)"
+            oninput="handleSearch(this.value)"
+            class="w-full pl-10 pr-10 py-2.5 bg-white border border-espresso-200 rounded-xl text-sm text-espresso-900 placeholder-espresso-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-600 shadow-sm transition-all"
+          />
+          <button
+            id="clear-search-btn"
+            onclick="clearSearch()"
+            class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-espresso-400 hover:text-espresso-700 p-1"
+            title="Xóa tìm kiếm"
+          >
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+          <div class="flex items-center gap-2 text-xs text-espresso-600 bg-white px-3.5 py-2.5 rounded-xl border border-espresso-200 shadow-sm">
+            <i data-lucide="sparkles" class="w-4 h-4 text-matcha-600"></i>
+            <span>Hiển thị <strong id="menu-count-label" class="text-espresso-900">0</strong> món</span>
+          </div>
+
+          <!-- Nút tự động nạp & đồng bộ ảnh từ G:\My Drive\caphe\pic theo tên sản phẩm -->
+          <div class="flex items-center gap-1">
+            <button
+              type="button"
+              id="sync-pic-folder-btn"
+              onclick="syncProductImagesFromPicFolder(false)"
+              title="Tự động nạp ảnh từ G:\My Drive\caphe\pic khi tên ảnh trùng tên sản phẩm"
+              class="flex items-center gap-1.5 text-xs font-semibold text-espresso-700 hover:text-white bg-white hover:bg-espresso-900 px-3 py-2.5 rounded-xl border border-espresso-200 shadow-sm transition-colors cursor-pointer"
+            >
+              <span id="pic-sync-dot" class="hidden w-2 h-2 rounded-full bg-matcha-500 shrink-0" title="Đã kết nối tự động với thư mục G:\My Drive\caphe\pic"></span>
+              <i data-lucide="refresh-cw" class="w-4 h-4 text-amber-600"></i>
+              <span>Nạp ảnh</span>
+              <span id="loaded-images-badge" class="hidden bg-matcha-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+            </button>
+            <button
+              type="button"
+              onclick="syncProductImagesFromPicFolder(true)"
+              title="Chọn / đổi thư mục ảnh (G:\My Drive\caphe\pic)"
+              class="p-2.5 text-espresso-600 hover:text-white bg-white hover:bg-espresso-900 rounded-xl border border-espresso-200 shadow-sm transition-colors cursor-pointer"
+            >
+              <i data-lucide="folder-cog" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 8 Categories + "Tất cả" Horizontal Scrollable Tabs -->
+      <div class="relative">
+        <div id="category-tabs" class="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+
+      <!-- Menu Items Grid -->
+      <div id="menu-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4">
+        <!-- Rendered by JS -->
+      </div>
+
+      <!-- Empty Search State -->
+      <div id="menu-empty-state" class="hidden flex-col items-center justify-center py-16 px-4 text-center bg-white rounded-2xl border border-espresso-200/80">
+        <div class="w-16 h-16 rounded-full bg-cream-200 text-espresso-500 flex items-center justify-center mb-3">
+          <i data-lucide="search-x" class="w-8 h-8"></i>
+        </div>
+        <h3 class="font-bold text-espresso-900 text-base">Không tìm thấy món phù hợp</h3>
+        <p class="text-sm text-espresso-500 mt-1 max-w-md">Thử tìm với từ khóa khác hoặc chọn lại danh mục "Tất cả" để xem toàn bộ thực đơn quán.</p>
+        <button onclick="resetFilters()" class="mt-4 px-4 py-2 bg-espresso-800 hover:bg-espresso-900 text-white text-sm font-medium rounded-xl transition-colors">
+          Xem tất cả món
+        </button>
+      </div>
+    </section>
+
+    <!-- Right Sidebar (Desktop) / Slide-up Drawer (Mobile & Tablet) -->
+    <div
+      id="mobile-cart-backdrop"
+      onclick="toggleMobileCart(false)"
+      class="fixed inset-0 bg-espresso-950/60 backdrop-blur-xs z-40 hidden lg:hidden transition-opacity"
+    ></div>
+
+    <aside
+      id="cart-sidebar"
+      class="fixed inset-x-0 bottom-0 z-50 lg:static lg:z-auto w-full lg:w-[410px] xl:w-[440px] shrink-0 bg-white lg:border-l border-espresso-200 shadow-2xl lg:shadow-none rounded-t-3xl lg:rounded-none flex flex-col max-h-[90vh] lg:max-h-[calc(100vh-4rem)] lg:sticky lg:top-16 translate-y-full lg:translate-y-0 transition-transform duration-300 ease-out"
+    >
+      <!-- Mobile Drawer Handle & Header -->
+      <div class="p-4 border-b border-espresso-100 bg-cream-50/80 rounded-t-3xl lg:rounded-none">
+        <div class="w-12 h-1.5 bg-espresso-200 rounded-full mx-auto mb-3 lg:hidden"></div>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-lg bg-espresso-900 text-amber-400 flex items-center justify-center">
+              <i data-lucide="shopping-bag" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h2 class="font-bold text-espresso-900 text-base leading-none">Hóa đơn hiện tại</h2>
+              <span id="cart-item-summary-sub" class="text-xs text-espresso-500">Chưa có món nào</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button
+              id="clear-cart-btn"
+              onclick="promptClearCart()"
+              class="hidden text-xs font-medium text-rose-600 hover:bg-rose-50 px-2.5 py-1.5 rounded-lg transition-colors items-center gap-1"
+              title="Xóa toàn bộ hóa đơn"
+            >
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              <span>Xóa hết</span>
+            </button>
+            <button
+              onclick="toggleMobileCart(false)"
+              class="lg:hidden p-2 rounded-xl bg-espresso-100 text-espresso-700 hover:bg-espresso-200"
+              aria-label="Đóng hóa đơn"
+            >
+              <i data-lucide="chevron-down" class="w-5 h-5"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Inline Confirm Clear Cart Banner -->
+        <div id="confirm-clear-banner" class="hidden mt-3 p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between gap-2 text-xs">
+          <span class="text-rose-800 font-medium">Xóa toàn bộ món trong hóa đơn này?</span>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button onclick="cancelClearCart()" class="px-2.5 py-1 rounded-lg bg-white border border-rose-200 text-espresso-700 font-medium hover:bg-espresso-50">Hủy</button>
+            <button onclick="confirmClearCart()" class="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-semibold hover:bg-rose-700">Đồng ý</button>
+          </div>
+        </div>
+
+        <!-- Takeaway Fixed Badge -->
+        <div class="mt-3 flex items-center justify-between bg-matcha-50 border border-matcha-200 text-matcha-700 px-3 py-2 rounded-xl text-xs font-bold">
+          <span class="flex items-center gap-1.5">
+            <i data-lucide="package" class="w-4 h-4"></i>
+            <span>Hình thức phục vụ: Mang đi (Take-away)</span>
+          </span>
+          <span class="text-[11px] bg-matcha-100 px-2 py-0.5 rounded-md">100% Mang đi</span>
+        </div>
+      </div>
+
+      <!-- Cart Items Scrollable List -->
+      <div id="cart-items-container" class="flex-1 overflow-y-auto p-4 space-y-3 min-h-[160px]">
+        <!-- Rendered by JS -->
+      </div>
+
+      <!-- Checkout & Summary Footer -->
+      <div class="p-4 border-t border-espresso-200 bg-cream-50 space-y-3">
+        <!-- Totals Breakdown -->
+        <div class="space-y-1.5 text-xs">
+          <div class="flex justify-between text-espresso-600">
+            <span>Tạm tính:</span>
+            <span id="summary-subtotal" class="font-semibold text-espresso-900">0đ</span>
+          </div>
+          <div class="flex justify-between items-baseline pt-1.5 border-t border-espresso-200">
+            <span class="text-sm font-bold text-espresso-900">Tổng thanh toán:</span>
+            <span id="summary-total" class="text-xl font-extrabold text-espresso-900 tracking-tight">0đ</span>
+          </div>
+        </div>
+
+        <!-- Payment Method Selector -->
+        <div class="grid grid-cols-2 gap-2">
+          <button
+            id="pay-method-cash"
+            onclick="setPaymentMethod('cash')"
+            class="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border-2 border-espresso-800 bg-espresso-800 text-white text-xs font-bold transition-all"
+          >
+            <i data-lucide="banknote" class="w-4 h-4"></i>
+            <span>Tiền mặt</span>
+          </button>
+          <button
+            id="pay-method-qr"
+            onclick="setPaymentMethod('qr')"
+            class="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border-2 border-espresso-200 bg-white text-espresso-700 hover:border-espresso-400 text-xs font-bold transition-all"
+          >
+            <i data-lucide="qr-code" class="w-4 h-4 text-matcha-600"></i>
+            <span>Chuyển khoản / QR</span>
+          </button>
+        </div>
+
+        <!-- Cash Received & Auto Change Calculator -->
+        <div id="cash-calculator-box" class="bg-white border border-espresso-200 rounded-xl p-2.5 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <label for="cash-received-input" class="text-xs font-semibold text-espresso-700">Khách đưa:</label>
+            <input
+              type="number"
+              id="cash-received-input"
+              min="0"
+              step="1000"
+              placeholder="Nhập số tiền..."
+              oninput="handleCashReceivedInput(this.value)"
+              class="w-32 text-right text-xs font-extrabold text-espresso-900 bg-cream-50 border border-espresso-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+          <!-- Quick Cash Denominations -->
+          <div class="flex flex-wrap items-center gap-1">
+            <button type="button" onclick="setQuickCash('exact')" class="px-2 py-1 rounded-md bg-espresso-100 hover:bg-espresso-200 text-espresso-800 text-[11px] font-bold transition-colors">Đủ tiền</button>
+            <button type="button" onclick="setQuickCash(50000)" class="px-2 py-1 rounded-md bg-cream-100 hover:bg-espresso-100 text-espresso-700 text-[11px] font-semibold border border-espresso-200 transition-colors">50k</button>
+            <button type="button" onclick="setQuickCash(100000)" class="px-2 py-1 rounded-md bg-cream-100 hover:bg-espresso-100 text-espresso-700 text-[11px] font-semibold border border-espresso-200 transition-colors">100k</button>
+            <button type="button" onclick="setQuickCash(200000)" class="px-2 py-1 rounded-md bg-cream-100 hover:bg-espresso-100 text-espresso-700 text-[11px] font-semibold border border-espresso-200 transition-colors">200k</button>
+            <button type="button" onclick="setQuickCash(500000)" class="px-2 py-1 rounded-md bg-cream-100 hover:bg-espresso-100 text-espresso-700 text-[11px] font-semibold border border-espresso-200 transition-colors">500k</button>
+          </div>
+          <div class="flex items-center justify-between pt-1.5 border-t border-dashed border-espresso-200 text-xs">
+            <span class="text-espresso-600 font-medium">Tiền thừa trả khách:</span>
+            <span id="summary-change" class="font-extrabold text-matcha-700 text-sm">0đ</span>
+          </div>
+        </div>
+
+        <!-- QR Quick Preview Box -->
+        <div id="qr-preview-box" class="hidden bg-white border border-matcha-200 rounded-xl p-2.5 flex items-center gap-3">
+          <div class="w-12 h-12 rounded-lg bg-matcha-50 border border-matcha-200 flex items-center justify-center shrink-0 text-matcha-700">
+            <i data-lucide="qr-code" class="w-8 h-8"></i>
+          </div>
+          <div class="text-[11px] leading-snug">
+            <div class="font-bold text-espresso-900">Thanh toán VietQR nhanh</div>
+            <div class="text-espresso-500">Mã QR kèm số tiền chính xác sẽ hiển thị ngay trên phiếu thanh toán.</div>
+          </div>
+        </div>
+
+        <!-- Confirm & Print Receipt CTA -->
+        <button
+          id="checkout-btn"
+          onclick="processCheckout()"
+          class="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-espresso-800 hover:from-amber-700 hover:to-espresso-900 active:scale-[0.99] text-white font-bold text-sm shadow-lg shadow-espresso-900/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <i data-lucide="printer" class="w-4 h-4"></i>
+          <span>Xác nhận & In hóa đơn</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Floating Bottom Cart Bar for Mobile / Tablet (< 1024px) -->
+    <div class="fixed bottom-4 inset-x-3 z-30 lg:hidden">
+      <button
+        onclick="toggleMobileCart(true)"
+        class="w-full bg-espresso-900 text-white px-4 py-3.5 rounded-2xl shadow-xl shadow-espresso-950/30 border border-espresso-700 flex items-center justify-between active:scale-[0.99] transition-transform"
+      >
+        <div class="flex items-center gap-3">
+          <div class="relative bg-amber-500 text-espresso-950 w-9 h-9 rounded-xl flex items-center justify-center font-extrabold text-sm">
+            <i data-lucide="shopping-bag" class="w-5 h-5"></i>
+            <span id="mobile-cart-badge" class="absolute -top-1.5 -right-1.5 bg-matcha-600 text-white text-[11px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-espresso-900">0</span>
+          </div>
+          <div class="text-left">
+            <div class="text-xs text-espresso-200 font-medium" id="mobile-cart-label">Xem hóa đơn</div>
+            <div class="text-base font-extrabold text-amber-400 leading-tight" id="mobile-cart-total">0đ</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5 bg-espresso-800 px-3 py-1.5 rounded-xl text-xs font-bold text-cream-50">
+          <span>Thanh toán</span>
+          <i data-lucide="chevron-up" class="w-4 h-4"></i>
+        </div>
+      </button>
+    </div>
+  </main>
+
+  <!-- ==================== VIEW 2: INGREDIENTS ENTRY & COST CALCULATION ==================== -->
+  <main id="view-ingredients" class="hidden max-w-[1400px] mx-auto p-4 sm:p-6 space-y-6">
+    <!-- Cost Summary Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-white p-5 rounded-2xl border border-espresso-200 shadow-xs flex items-center gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+          <i data-lucide="receipt" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-espresso-500">Chi phí nhập hôm nay</p>
+          <p id="stat-ing-today-cost" class="text-xl font-extrabold text-rose-700 mt-0.5">0đ</p>
+        </div>
+      </div>
+
+      <div class="bg-white p-5 rounded-2xl border border-espresso-200 shadow-xs flex items-center gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+          <i data-lucide="coins" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-espresso-500">Tổng chi phí nhập kho</p>
+          <p id="stat-ing-total-cost" class="text-xl font-extrabold text-espresso-900 mt-0.5">0đ</p>
+        </div>
+      </div>
+
+      <div class="bg-white p-5 rounded-2xl border border-espresso-200 shadow-xs flex items-center gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-espresso-100 text-espresso-700 flex items-center justify-center shrink-0">
+          <i data-lucide="boxes" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-espresso-500">Tổng số phiếu nhập</p>
+          <p id="stat-ing-count" class="text-xl font-extrabold text-espresso-900 mt-0.5">0 phiếu</p>
+        </div>
+      </div>
+
+      <div class="bg-white p-5 rounded-2xl border border-espresso-200 shadow-xs flex items-center gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-matcha-100 text-matcha-700 flex items-center justify-center shrink-0">
+          <i data-lucide="trending-up" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-espresso-500">Lợi nhuận tạm tính hôm nay</p>
+          <p id="stat-ing-today-profit" class="text-xl font-extrabold text-matcha-700 mt-0.5">0đ</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Split Layout: Form Add Ingredient (Left) & Ingredient History List (Right) -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <!-- Form nhập nguyên liệu -->
+      <div class="lg:col-span-5 bg-white rounded-2xl border border-espresso-200 shadow-xs overflow-hidden">
+        <div class="p-4 sm:p-5 border-b border-espresso-100 bg-cream-50/70 flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-espresso-900 text-amber-400 flex items-center justify-center shrink-0">
+            <i data-lucide="package-plus" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="font-bold text-espresso-900 text-base">Nhập nguyên liệu bán hàng</h2>
+            <p class="text-xs text-espresso-500">Ghi nhận chi phí mua nguyên vật liệu cho quán</p>
+          </div>
+        </div>
+
+        <form id="ingredient-form" onsubmit="handleAddIngredient(event)" class="p-4 sm:p-5 space-y-4">
+          <div>
+            <label for="ing-name" class="block text-xs font-bold text-espresso-800 mb-1.5">Tên nguyên liệu <span class="text-rose-600">*</span></label>
+            <input
+              type="text"
+              id="ing-name"
+              required
+              placeholder="VD: Cà phê hạt rang, Sữa đặc, Đường cát, Ly nhựa..."
+              class="w-full px-3.5 py-2.5 bg-cream-50 border border-espresso-200 rounded-xl text-sm text-espresso-900 placeholder-espresso-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="ing-qty" class="block text-xs font-bold text-espresso-800 mb-1.5">Số lượng <span class="text-rose-600">*</span></label>
+              <input
+                type="number"
+                id="ing-qty"
+                required
+                min="0.01"
+                step="any"
+                value="1"
+                oninput="updateIngredientPreviewCost()"
+                class="w-full px-3.5 py-2.5 bg-cream-50 border border-espresso-200 rounded-xl text-sm font-bold text-espresso-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+
+            <div>
+              <label for="ing-unit" class="block text-xs font-bold text-espresso-800 mb-1.5">Đơn vị tính</label>
+              <select
+                id="ing-unit"
+                class="w-full px-3 py-2.5 bg-cream-50 border border-espresso-200 rounded-xl text-sm font-medium text-espresso-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              >
+                <option value="kg">kg</option>
+                <option value="bao">bao</option>
+                <option value="gói">gói / bịch</option>
+                <option value="hộp">hộp / lon</option>
+                <option value="chai">chai / bình</option>
+                <option value="thùng">thùng</option>
+                <option value="lốc">lốc</option>
+                <option value="cái">cái / ly</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label for="ing-price" class="block text-xs font-bold text-espresso-800 mb-1.5">Đơn giá nhập (VNĐ) <span class="text-rose-600">*</span></label>
+            <input
+              type="number"
+              id="ing-price"
+              required
+              min="0"
+              step="500"
+              placeholder="VD: 150000"
+              oninput="updateIngredientPreviewCost()"
+              class="w-full px-3.5 py-2.5 bg-cream-50 border border-espresso-200 rounded-xl text-sm font-bold text-espresso-900 placeholder-espresso-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+
+          <div>
+            <label for="ing-note" class="block text-xs font-bold text-espresso-800 mb-1.5">Nhà cung cấp / Ghi chú</label>
+            <input
+              type="text"
+              id="ing-note"
+              placeholder="VD: Nhập chợ Bến Cát, Đại lý sữa..."
+              class="w-full px-3.5 py-2.5 bg-cream-50 border border-espresso-200 rounded-xl text-sm text-espresso-900 placeholder-espresso-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+
+          <!-- Preview Thành tiền -->
+          <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between">
+            <span class="text-xs font-bold text-espresso-800">Thành tiền phiếu nhập:</span>
+            <span id="ing-preview-total" class="text-lg font-extrabold text-amber-800">0đ</span>
+          </div>
+
+          <button
+            type="submit"
+            class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-espresso-800 hover:from-amber-700 hover:to-espresso-900 text-white font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-all"
+          >
+            <i data-lucide="plus-circle" class="w-4 h-4"></i>
+            <span>Lưu phiếu nhập nguyên liệu</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Danh sách nguyên liệu đã nhập -->
+      <div class="lg:col-span-7 bg-white rounded-2xl border border-espresso-200 shadow-xs overflow-hidden">
+        <div class="p-4 sm:p-5 border-b border-espresso-100 space-y-3 bg-cream-50/60">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 class="font-bold text-espresso-900 text-base sm:text-lg">Bảng kê nguyên liệu đã nhập</h2>
+              <p class="text-xs text-espresso-500">Tự động cộng dồn tổng chi phí theo ngày hoặc toàn bộ</p>
+            </div>
+            <div class="bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-xl text-xs font-bold text-rose-700 shrink-0 self-start sm:self-auto">
+              <span id="table-ing-cost-label">Tổng chi phí:</span> <span id="table-ing-total-cost" class="text-sm font-extrabold">0đ</span>
+            </div>
+          </div>
+
+          <!-- Bộ lọc theo ngày cho Bảng kê nguyên liệu -->
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-espresso-200/70">
+            <div class="flex flex-wrap items-center gap-2">
+              <label for="ingredient-date-filter" class="inline-flex items-center gap-1.5 text-xs font-bold text-espresso-700">
+                <i data-lucide="calendar" class="w-3.5 h-3.5 text-amber-700"></i>
+                <span>Lọc theo ngày:</span>
+              </label>
+              <input
+                type="date"
+                id="ingredient-date-filter"
+                onchange="handleIngredientDateFilter(this.value)"
+                class="px-2.5 py-1.5 bg-white border border-espresso-200 rounded-xl text-xs font-bold text-espresso-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+              <button
+                type="button"
+                id="ing-filter-today-btn"
+                onclick="setIngredientDateFilterToday()"
+                class="px-2.5 py-1.5 rounded-xl border border-espresso-200 bg-white hover:bg-espresso-100 text-espresso-700 text-xs font-semibold transition-colors"
+              >
+                Hôm nay
+              </button>
+              <button
+                type="button"
+                id="ing-filter-all-btn"
+                onclick="clearIngredientDateFilter()"
+                class="px-2.5 py-1.5 rounded-xl bg-espresso-900 text-white text-xs font-semibold transition-colors"
+              >
+                Tất cả ngày
+              </button>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <span id="ingredient-filter-summary" class="text-xs font-semibold text-espresso-600">
+                Hiển thị 0 phiếu
+              </span>
+              <button
+                type="button"
+                onclick="exportIngredientsCSV('filtered')"
+                title="Xuất file CSV theo ngày đang lọc (hoặc toàn bộ nếu đang chọn Tất cả ngày)"
+                class="px-2.5 py-1.5 rounded-xl bg-matcha-600 hover:bg-matcha-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs transition-colors"
+              >
+                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                <span id="export-ing-filtered-label">Xuất CSV (Đang lọc)</span>
+              </button>
+              <button
+                type="button"
+                onclick="exportIngredientsCSV('all')"
+                title="Xuất toàn bộ lịch sử nhập nguyên liệu ra file CSV"
+                class="px-2.5 py-1.5 rounded-xl border border-matcha-300 bg-matcha-50 hover:bg-matcha-100 text-matcha-800 text-xs font-bold inline-flex items-center gap-1.5 transition-colors"
+              >
+                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+                <span>Xuất tất cả CSV</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="ingredients-list-container" class="divide-y divide-espresso-100">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ==================== VIEW 3: ORDER HISTORY & DAILY REVENUE ==================== -->
+  <main id="view-history" class="hidden max-w-[1400px] mx-auto p-4 sm:p-6 space-y-6">
+    <!-- Daily Stats Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-white p-5 rounded-2xl border border-espresso-200 shadow-xs flex items-center gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+          <i data-lucide="wallet" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-espresso-500">Doanh thu hôm nay</p>
+          <p id="stat-today-revenue" class="text-xl font-extrabold text-espresso-900 mt-0.5">0đ</p>
+        </div>
+      </div>
+
+      <div class="bg-white p-5 rounded-2xl border border-espresso-200 shadow-xs flex items-center gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-matcha-100 text-matcha-700 flex items-center justify-center shrink-0">
+          <i data-lucide="shopping-bag" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-espresso-500">Số đơn hôm nay</p>
+          <p id="stat-today-orders" class="text-xl font-extrabold text-espresso-900 mt-0.5">0 đơn</p>
+        </div>
+      </div>
+
+      <div class="bg-white p-5 rounded-2xl border border-espresso-200 shadow-xs flex items-center gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-espresso-100 text-espresso-700 flex items-center justify-center shrink-0">
+          <i data-lucide="banknote" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-espresso-500">Thu Tiền mặt (Hôm nay)</p>
+          <p id="stat-today-cash" class="text-xl font-extrabold text-espresso-900 mt-0.5">0đ</p>
+        </div>
+      </div>
+
+      <div class="bg-white p-5 rounded-2xl border border-espresso-200 shadow-xs flex items-center gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
+          <i data-lucide="qr-code" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-espresso-500">Chuyển khoản / QR (Hôm nay)</p>
+          <p id="stat-today-qr" class="text-xl font-extrabold text-espresso-900 mt-0.5">0đ</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Orders History Table / List Container -->
+    <div class="bg-white rounded-2xl border border-espresso-200 shadow-xs overflow-hidden">
+      <div class="p-4 sm:p-5 border-b border-espresso-100 space-y-3.5 bg-cream-50/60">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="font-bold text-espresso-900 text-lg">Danh sách đơn hàng đã lưu</h2>
+            <p class="text-xs text-espresso-500">Dữ liệu được lưu tự động trên trình duyệt (localStorage)</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Tổng số món đã bán được -->
+            <div class="bg-matcha-50 border border-matcha-200 px-3.5 py-2 rounded-xl text-xs font-bold text-matcha-700 flex items-center gap-1.5">
+              <i data-lucide="cup-soda" class="w-4 h-4"></i>
+              <span>Tổng món đã bán:</span>
+              <span id="history-total-items-sold" class="text-sm font-extrabold text-matcha-800">0 món</span>
+            </div>
+
+            <!-- Tổng tiền danh sách đang lọc -->
+            <div class="bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-xl text-xs font-bold text-amber-800 flex items-center gap-1.5">
+              <i data-lucide="coins" class="w-4 h-4"></i>
+              <span>Tổng tiền:</span>
+              <span id="history-filtered-revenue" class="text-sm font-extrabold text-espresso-900">0đ</span>
+            </div>
+
+            <!-- Tổng tiền trừ chi phí nguyên liệu -->
+            <div class="bg-emerald-50 border border-emerald-200 px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+              <i data-lucide="calculator" class="w-4 h-4"></i>
+              <span>Tổng tiền trừ chi phí nguyên liệu:</span>
+              <span id="history-net-revenue" class="text-sm font-extrabold text-emerald-900">0đ</span>
+            </div>
+
+            <button
+              onclick="switchMainView('pos')"
+              class="px-3.5 py-2 rounded-xl bg-espresso-800 hover:bg-espresso-900 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
+            >
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span>Tạo đơn mới</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Bộ lọc theo ngày cho Danh sách đơn hàng đã lưu -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-espresso-200/70">
+          <div class="flex flex-wrap items-center gap-2">
+            <label for="history-date-filter" class="inline-flex items-center gap-1.5 text-xs font-bold text-espresso-700">
+              <i data-lucide="calendar" class="w-3.5 h-3.5 text-amber-700"></i>
+              <span>Lọc theo ngày:</span>
+            </label>
+            <input
+              type="date"
+              id="history-date-filter"
+              onchange="handleHistoryDateFilter(this.value)"
+              class="px-2.5 py-1.5 bg-white border border-espresso-200 rounded-xl text-xs font-bold text-espresso-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+            <button
+              type="button"
+              id="history-filter-today-btn"
+              onclick="setHistoryDateFilterToday()"
+              class="px-2.5 py-1.5 rounded-xl border border-espresso-200 bg-white hover:bg-espresso-100 text-espresso-700 text-xs font-semibold transition-colors"
+            >
+              Hôm nay
+            </button>
+            <button
+              type="button"
+              id="history-filter-all-btn"
+              onclick="clearHistoryDateFilter()"
+              class="px-2.5 py-1.5 rounded-xl bg-espresso-900 text-white text-xs font-semibold transition-colors"
+            >
+              Tất cả ngày
+            </button>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <span id="history-filter-summary" class="text-xs font-semibold text-espresso-600">
+              Hiển thị 0 đơn hàng
+            </span>
+            <button
+              type="button"
+              onclick="exportOrdersCSV('filtered')"
+              title="Xuất file CSV theo ngày đang lọc (hoặc toàn bộ nếu đang chọn Tất cả ngày)"
+              class="px-2.5 py-1.5 rounded-xl bg-matcha-600 hover:bg-matcha-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs transition-colors"
+            >
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              <span id="export-hist-filtered-label">Xuất CSV (Đang lọc)</span>
+            </button>
+            <button
+              type="button"
+              onclick="exportOrdersCSV('all')"
+              title="Xuất toàn bộ lịch sử đơn hàng ra file CSV"
+              class="px-2.5 py-1.5 rounded-xl border border-matcha-300 bg-matcha-50 hover:bg-matcha-100 text-matcha-800 text-xs font-bold inline-flex items-center gap-1.5 transition-colors"
+            >
+              <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+              <span>Xuất tất cả CSV</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bulk Action Toolbar -->
+      <div id="history-bulk-toolbar" class="hidden px-4 sm:px-5 py-3 bg-amber-50/80 border-b border-espresso-200 flex flex-wrap items-center justify-between gap-3">
+        <label class="inline-flex items-center gap-2.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            id="history-select-all-checkbox"
+            onchange="toggleSelectAllOrders(this.checked)"
+            class="w-4 h-4 rounded border-espresso-300 text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-600"
+          />
+          <span class="text-xs sm:text-sm font-bold text-espresso-800">Chọn tất cả đơn hàng đang hiển thị</span>
+        </label>
+
+        <div id="history-bulk-actions" class="hidden items-center gap-2.5">
+          <span class="text-xs font-semibold text-espresso-700">
+            Đã chọn <strong id="history-selected-count" class="text-amber-700 font-extrabold">0</strong> đơn
+          </span>
+          <button
+            type="button"
+            onclick="clearOrderSelections()"
+            class="px-2.5 py-1.5 rounded-lg border border-espresso-200 bg-white hover:bg-espresso-50 text-espresso-700 text-xs font-semibold transition-colors"
+          >
+            Bỏ chọn
+          </button>
+          <button
+            type="button"
+            onclick="deleteSelectedOrders()"
+            class="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors"
+          >
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Xóa đã chọn</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="history-list-container" class="divide-y divide-espresso-100">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+  </main>
+
+  <!-- ==================== MODAL 1: COMPACT DRAGGABLE ITEM CUSTOMIZATION POP-UP ==================== -->
+  <div
+    id="custom-modal"
+    onclick="handleCustomModalBackdropClick(event)"
+    class="fixed inset-0 z-50 hidden bg-espresso-950/20 pointer-events-auto"
+  >
+    <div
+      id="custom-modal-card"
+      onclick="event.stopPropagation()"
+      class="fixed bg-white w-[calc(100vw-1.5rem)] sm:w-[440px] md:w-[460px] rounded-3xl shadow-2xl border-2 border-espresso-300 overflow-hidden flex flex-col max-h-[calc(100vh-1.5rem)]"
+    >
+      <!-- Draggable Modal Header -->
+      <div
+        id="custom-modal-drag-handle"
+        onpointerdown="startModalDrag(event)"
+        title="Kéo thả để di chuyển pop-up đến bất kỳ vị trí nào"
+        class="p-4 bg-cream-50 border-b border-espresso-100 flex items-start justify-between gap-3 cursor-grab active:cursor-grabbing select-none touch-none shrink-0"
+      >
+        <div class="flex items-center gap-3 min-w-0">
+          <div id="modal-item-icon" class="w-11 h-11 rounded-2xl bg-espresso-100 text-espresso-800 flex items-center justify-center text-2xl shrink-0">
+            ☕
+          </div>
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span id="modal-item-category" class="text-[11px] font-bold uppercase tracking-wider text-matcha-700 bg-matcha-100 px-2 py-0.5 rounded-md">Cà Phê</span>
+              <span class="inline-flex items-center gap-1 text-[11px] font-medium text-espresso-500">
+                <i data-lucide="grip-horizontal" class="w-3.5 h-3.5 text-espresso-400"></i>
+                <span>Kéo thả tự do</span>
+              </span>
+            </div>
+            <h3 id="modal-item-name" class="font-extrabold text-espresso-900 text-base sm:text-lg mt-0.5 leading-snug truncate">Cà phê sữa đá</h3>
+            <p id="modal-item-base-price" class="text-sm font-bold text-amber-700">29.000đ</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onpointerdown="event.stopPropagation()"
+          onclick="closeCustomModal()"
+          class="p-2 rounded-xl bg-espresso-100/80 hover:bg-espresso-200 text-espresso-700 transition-colors shrink-0 cursor-pointer"
+          title="Đóng bảng tùy chọn"
+        >
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Compact Scrollable Options -->
+      <div class="p-4 overflow-y-auto space-y-3.5">
+        
+        <!-- Drink-only Options Wrapper -->
+        <div id="modal-drink-options" class="space-y-3.5">
+          <!-- 1. Size Selection -->
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wider text-espresso-700 mb-1.5">1. Chọn Kích Cỡ (Size)</label>
+            <div class="grid grid-cols-2 gap-2" id="modal-size-group">
+              <button type="button" onclick="selectOption('size', 'M')" data-val="M" class="option-btn-size px-3 py-2 rounded-xl border-2 border-espresso-800 bg-espresso-50 text-left transition-all">
+                <div class="font-bold text-xs sm:text-sm text-espresso-900">Size M (Tiêu chuẩn)</div>
+                <div class="text-[11px] text-espresso-500 mt-0.5">Mặc định (+0đ)</div>
+              </button>
+              <button type="button" onclick="selectOption('size', 'L')" data-val="L" class="option-btn-size px-3 py-2 rounded-xl border-2 border-espresso-200 bg-white text-left hover:border-espresso-400 transition-all">
+                <div class="font-bold text-xs sm:text-sm text-espresso-900">Size L (Lớn)</div>
+                <div class="text-[11px] text-amber-700 font-semibold mt-0.5">+5.000đ</div>
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. Ice Level -->
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wider text-espresso-700 mb-1.5">2. Mức Đá</label>
+            <div class="flex flex-wrap gap-1.5" id="modal-ice-group">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+
+          <!-- 3. Sugar Level -->
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wider text-espresso-700 mb-1.5">3. Mức Đường</label>
+            <div class="flex flex-wrap gap-1.5" id="modal-sugar-group">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+
+          <!-- 4. Toppings (Multi-select) -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="block text-xs font-bold uppercase tracking-wider text-espresso-700">4. Topping Thêm (Tùy chọn)</label>
+              <span class="text-[11px] text-espresso-500">Chọn nhiều</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2" id="modal-toppings-group">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. Custom Note -->
+        <div>
+          <label for="modal-note-input" class="block text-xs font-bold uppercase tracking-wider text-espresso-700 mb-1.5">Ghi chú riêng cho món</label>
+          <input
+            type="text"
+            id="modal-note-input"
+            placeholder="VD: Ít ngọt, để riêng đá, mang đi..."
+            class="w-full px-3 py-2 bg-cream-50 border border-espresso-200 rounded-xl text-xs sm:text-sm text-espresso-900 placeholder-espresso-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+          />
+        </div>
+      </div>
+
+      <!-- Compact Footer: Quantity & Add to Order Button -->
+      <div class="px-4 py-3 bg-cream-50 border-t border-espresso-200 flex items-center gap-3 shrink-0">
+        <!-- Qty Stepper -->
+        <div class="flex items-center bg-white border border-espresso-200 rounded-xl p-0.5 shrink-0">
+          <button type="button" onclick="changeModalQty(-1)" class="w-8 h-8 rounded-lg flex items-center justify-center text-espresso-700 hover:bg-espresso-100 active:scale-95 transition-all">
+            <i data-lucide="minus" class="w-4 h-4"></i>
+          </button>
+          <span id="modal-qty-value" class="w-8 text-center font-extrabold text-espresso-900 text-sm">1</span>
+          <button type="button" onclick="changeModalQty(1)" class="w-8 h-8 rounded-lg flex items-center justify-center text-espresso-700 hover:bg-espresso-100 active:scale-95 transition-all">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <!-- Add Button -->
+        <button
+          type="button"
+          onclick="confirmAddToCart()"
+          class="flex-1 py-2.5 px-4 rounded-xl bg-espresso-900 hover:bg-espresso-800 active:scale-[0.99] text-white font-bold text-sm shadow-md flex items-center justify-between transition-all"
+        >
+          <span>Xuất sang hóa đơn</span>
+          <span id="modal-total-price" class="bg-amber-500 text-espresso-950 px-2.5 py-0.5 rounded-lg font-extrabold text-xs sm:text-sm">29.000đ</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 2: RECEIPT PREVIEW MODAL ==================== -->
+  <div id="receipt-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-espresso-950/70 backdrop-blur-xs p-3 sm:p-4">
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-espresso-200 overflow-hidden flex flex-col max-h-[92vh]">
+      
+      <!-- Top Bar (No Print) -->
+      <div class="p-4 bg-matcha-600 text-white flex items-center justify-between no-print">
+        <div class="flex items-center gap-2">
+          <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+          <span class="font-bold text-sm">Đã tạo & lưu đơn hàng thành công!</span>
+        </div>
+        <button onclick="closeReceiptModal()" class="p-1.5 rounded-lg hover:bg-matcha-700 transition-colors">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Printable Receipt Content -->
+      <div id="receipt-printable" class="p-5 sm:p-6 overflow-y-auto flex-1 bg-white text-espresso-950 font-mono text-xs leading-relaxed">
+        <!-- Rendered dynamically by JS -->
+      </div>
+
+      <!-- Action Buttons (No Print) -->
+      <div class="p-3.5 sm:p-4 bg-cream-50 border-t border-espresso-200 flex items-center gap-2 sm:gap-2.5 no-print">
+        <button
+          type="button"
+          onclick="closeReceiptModal()"
+          class="px-3.5 py-2.5 rounded-xl border border-espresso-300 bg-white hover:bg-espresso-50 text-espresso-800 font-bold text-xs sm:text-sm transition-colors shrink-0"
+        >
+          Đóng
+        </button>
+        <div class="flex-1 flex items-stretch rounded-xl shadow-md overflow-hidden">
+          <button
+            type="button"
+            id="save-receipt-jpg-btn"
+            onclick="saveReceiptAsJPG(false)"
+            title="Lưu ảnh hóa đơn trực tiếp vào G:\My Drive\caphe"
+            class="flex-1 py-2.5 px-2.5 bg-matcha-600 hover:bg-matcha-700 active:scale-[0.99] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <i data-lucide="image-down" class="w-4 h-4 shrink-0"></i>
+            <span>Lưu ảnh (.JPG)</span>
+          </button>
+          <button
+            type="button"
+            onclick="saveReceiptAsJPG(true)"
+            title="Chọn / đổi thư mục lưu (G:\My Drive\caphe)"
+            class="px-2 bg-matcha-700 hover:bg-matcha-800 text-white border-l border-matcha-500/50 flex items-center justify-center transition-colors"
+          >
+            <i data-lucide="folder-cog" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+        <button
+          type="button"
+          onclick="window.print()"
+          class="flex-1 py-2.5 px-3 rounded-xl bg-espresso-900 hover:bg-espresso-800 active:scale-[0.99] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-md transition-all"
+        >
+          <i data-lucide="printer" class="w-4 h-4 shrink-0"></i>
+          <span>In hóa đơn</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==================== DATA CONFIGURATION ====================
+    const CATEGORIES = [
+      { id: 'all', name: 'Tất cả', icon: 'layout-grid' },
+      { id: 'Cà Phê', name: 'Cà Phê', icon: 'coffee' },
+      { id: 'Ca Cao', name: 'Ca Cao', icon: 'cup-soda' },
+      { id: 'Matcha', name: 'Matcha', icon: 'leaf' },
+      { id: 'Khoai Môn', name: 'Khoai Môn', icon: 'sparkles' },
+      { id: 'Trà Trái Cây', name: 'Trà Trái Cây', icon: 'citrus' },
+      { id: 'Soda', name: 'Soda', icon: 'glass-water' },
+      { id: 'Sữa Chua', name: 'Sữa Chua', icon: 'ice-cream-bowl' },
+      { id: 'Khác', name: 'Khác', icon: 'croissant' },
+    ];
+
+    const MENU_ITEMS = [
+      // 1. Cà Phê
+      { id: 'cf-1', name: 'Cà phê đen đá', category: 'Cà Phê', price: 15000, emoji: '☕', desc: 'Đậm đà hương vị cà phê rang mộc truyền thống' },
+      { id: 'cf-2', name: 'Cà phê sữa đá', category: 'Cà Phê', price: 20000, emoji: '☕', desc: 'Cà phê phin đậm vị hòa quyện sữa đặc béo ngọt' },
+      { id: 'cf-3', name: 'Cà phê muối', category: 'Cà Phê', price: 25000, emoji: '☕', desc: 'Lớp kem muối mặn béo mịn đặc trưng trên nền cà phê' },
+      { id: 'cf-4', name: 'Bạc xĩu', category: 'Cà Phê', price: 20000, emoji: '☕', desc: 'Nhiều sữa tươi béo ngậy, thoảng hương cà phê thơm' },
+      { id: 'cf-5', name: 'Cà phê khoai môn', category: 'Cà Phê', price: 25000, emoji: '☕', desc: 'Sự hòa quyện độc đáo giữa cà phê đậm và khoai môn bùi' },
+
+      // 2. Ca Cao
+      { id: 'cc-1', name: 'Ca cao sữa', category: 'Ca Cao', price: 20000, emoji: '🍫', desc: 'Cacao nguyên chất béo thơm hòa quyện sữa ngọt dịu' },
+      { id: 'cc-2', name: 'Ca cao muối', category: 'Ca Cao', price: 25000, emoji: '🍫', desc: 'Cacao đậm vị phủ lớp kem muối mặn béo sánh mịn' },
+      { id: 'cc-3', name: 'Ca cao bạc hà', category: 'Ca Cao', price: 28000, emoji: '🍫', desc: 'Hương sô-cô-la nồng nàn kết hợp bạc hà thanh mát' },
+
+      // 3. Matcha
+      { id: 'mc-1', name: 'Matcha latte', category: 'Matcha', price: 20000, emoji: '🍵', desc: 'Bột trà xanh Nhật Bản thanh mát cùng sữa tươi' },
+      { id: 'mc-2', name: 'Matcha muối', category: 'Matcha', price: 25000, emoji: '🍵', desc: 'Matcha thơm dịu kết hợp lớp kem muối béo mặn hài hòa' },
+      { id: 'mc-3', name: 'Matcha dâu', category: 'Matcha', price: 28000, emoji: '🍵🍓', desc: 'Tầng mứt dâu tây chua ngọt hòa quyện cùng matcha' },
+
+      // 4. Khoai Môn
+      { id: 'km-1', name: 'Khoai môn latte', category: 'Khoai Môn', price: 20000, emoji: '🍠', desc: 'Khoai môn nghiền dẻo thơm hòa cùng sữa tươi thanh trùng' },
+      { id: 'km-2', name: 'Khoai môn kem muối', category: 'Khoai Môn', price: 25000, emoji: '🧀', desc: 'Khoai môn bùi béo phủ lớp kem phô mai mặn thơm' },
+      { id: 'km-3', name: 'Khoai môn matcha', category: 'Khoai Môn', price: 28000, emoji: '🧋', desc: 'Hồng trà sữa thơm béo đậm hương khoai môn tím' },
+
+      // 5. Trà Trái Cây
+      { id: 'tc-0', name: 'Trà Dâu', category: 'Trà Trái Cây', price: 25000, emoji: '🍓', desc: 'Trà dâu thanh mát kèm mứt dâu thơm ngon' },
+      { id: 'tc-1', name: 'Trà Đào', category: 'Trà Trái Cây', price: 25000, emoji: '🍑', desc: 'Trà đào thanh mát kèm đào miếng giòn và hương sả' },
+      { id: 'tc-2', name: 'Trà Vải', category: 'Trà Trái Cây', price: 25000, emoji: '🌹', desc: 'Hương hoa hồng dịu nhẹ cùng trái vải mọng nước' },
+      { id: 'tc-3', name: 'Trà Dâu Tằm', category: 'Trà Trái Cây', price: 25000, emoji: '🫐', desc: 'Dâu tằm ngâm chua ngọt tự nhiên giải nhiệt cực đã' },
+      { id: 'tc-4', name: 'Trà Mãng Cầu', category: 'Trà Trái Cây', price: 25000, emoji: '🥭', desc: 'Chanh dây tươi thơm lừng hòa quyện trà lài thanh khiết' },
+      { id: 'tc-5', name: 'Trà Mix các loại', category: 'Trà Trái Cây', price: 25000, emoji: '🥭', desc: 'Trà trái cây kèm trân châu 3Q' },
+
+      // 6. Soda
+      { id: 'sd-1', name: 'Soda Việt Quất', category: 'Soda', price: 20000, emoji: '🫐', desc: 'Soda sủi bọt mát lạnh hòa quyện mứt việt quất' },
+      { id: 'sd-2', name: 'Soda Dâu', category: 'Soda', price: 20000, emoji: '🍓', desc: 'Soda tươi mát thơm ngọt hương dâu tây Đà Lạt' },
+      { id: 'sd-3', name: 'Soda Bạc Hà', category: 'Soda', price: 20000, emoji: '🌿', desc: 'Bạc hà the mát kết hợp chanh tươi sảng khoái' },
+      { id: 'sd-4', name: 'Skyblue', category: 'Soda', price: 20000, emoji: '🧊', desc: 'Soda xanh mát lạnh sảng khoái' },
+      { id: 'sd-5', name: 'Soda Đào Cam', category: 'Soda', price: 20000, emoji: '🧊', desc: 'Soda tươi mát sự kết hợp hoàn hảo giữa đào và cam' },
+      { id: 'sd-6', name: 'Soda Cam Vàng', category: 'Soda', price: 20000, emoji: '🧊', desc: 'Soda cam mát lạnh sảng khoái' },
+
+      // 7. Sữa Chua
+      { id: 'sc-1', name: 'Sữa chua Mãng Cầu', category: 'Sữa Chua', price: 25000, emoji: '🍨', desc: 'Sữa chua lên men tự nhiên lắc cùng đá mịn mát lạnh' },
+      { id: 'sc-2', name: 'Chanh đá sữa', category: 'Sữa Chua', price: 20000, emoji: '🍋', desc: 'Chanh tươi mát lạnh kết hợp sữa chua sánh mịn' },
+      { id: 'sc-3', name: 'Đào sữa lắc', category: 'Sữa Chua', price: 20000, emoji: '🍑', desc: 'Đào thơm ngọt lắc cùng sữa chua mát lạnh' },
+      { id: 'sc-4', name: 'Dâu sữa lắc', category: 'Sữa Chua', price: 20000, emoji: '🍓', desc: 'Dâu tây chua ngọt lắc cùng sữa chua béo mịn' },
+      { id: 'sc-5', name: 'Sữa chua dâu tằm', category: 'Sữa Chua', price: 25000, emoji: '🫐', desc: 'Sữa chua dẻo mịn hòa quyện dâu tằm chua ngọt' },
+
+      // 8. Khác
+      { id: 'kh-1', name: 'Trà Tắc', category: 'Khác', price: 15000, emoji: '🍋', desc: 'Trà tắc tươi mát lạnh giải nhiệt' },
+      { id: 'kh-2', name: 'Trà Chanh', category: 'Khác', price: 15000, emoji: '🧊', desc: 'Trà chanh thanh mát sảng khoái'},
+      { id: 'kh-3', name: 'Trà Chanh mix Bạc Hà', category: 'Khác', price: 20000, emoji: '🌿', desc: 'Trà chanh kết hợp lá bạc hà thơm mát'},
+    ];
+
+    const ICE_LEVELS = ['100%', '70%', '50%', '30%', 'Không đá', 'Nóng'];
+    const SUGAR_LEVELS = ['100%', '70%', '50%', '30%', 'Không đường'];
+    const TOPPINGS = [
+      { id: 'tp-1', name: 'Trân châu trắng', price: 5000 },
+      { id: 'tp-2', name: 'Kem muối', price: 5000 },
+      { id: 'tp-3', name: 'đá thêm', price: 1000 }
+    ];
+
+    const STORAGE_KEY = 'osix_cafe_orders_v2_takeaway';
+    const INGREDIENTS_STORAGE_KEY = 'osix_cafe_ingredients_v1';
+
+    // ==================== APPLICATION STATE ====================
+    let state = {
+      activeView: 'pos',
+      selectedCategory: 'all',
+      searchQuery: '',
+      cart: [],
+      orderType: 'takeaway',
+      locationLabel: 'Mang đi',
+      paymentMethod: 'cash',
+      cashReceived: 0,
+      ordersHistory: [],
+      selectedOrderIds: [],
+      historyFilterDate: '',      // '' = tất cả ngày, hoặc 'YYYY-MM-DD'
+      ingredientsHistory: [],
+      ingredientFilterDate: '',   // '' = tất cả ngày, hoặc 'YYYY-MM-DD'
+      currentReceiptOrder: null,  // Đơn hàng đang hiển thị ở modal hóa đơn
+      // Customization modal state & draggable position
+      modalItem: null,
+      modalSize: 'M',
+      modalIce: '100%',
+      modalSugar: '100%',
+      modalToppings: [],
+      modalNote: '',
+      modalQty: 1,
+      modalPos: null,
+      modalHasCustomPos: false,
+    };
+
+    let dragState = {
+      active: false,
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      originLeft: 0,
+      originTop: 0,
+    };
+
+    // ==================== UTILITY FUNCTIONS ====================
+    function getLocalDateKey(dateObj = new Date()) {
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const d = String(dateObj.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function formatDateKeyVN(dateKey) {
+      if (!dateKey) return '';
+      const parts = dateKey.split('-');
+      if (parts.length !== 3) return dateKey;
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+
+    function formatVND(amount) {
+      const num = Math.round(Number(amount) || 0);
+      return num.toLocaleString('vi-VN') + 'đ';
+    }
+
+    function getEffectiveItemUnitPrice(item) {
+      return item.cardSwapped ? 0 : item.unitPrice;
+    }
+
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const bgClass = type === 'error'
+        ? 'bg-rose-600 text-white'
+        : type === 'info'
+          ? 'bg-espresso-900 text-amber-300 border border-espresso-700'
+          : 'bg-matcha-600 text-white';
+
+      toast.className = `${bgClass} px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs sm:text-sm font-semibold pointer-events-auto transform transition-all duration-300 translate-y-0 opacity-100`;
+      toast.innerHTML = `
+        <i data-lucide="${type === 'error' ? 'alert-circle' : 'check-circle-2'}" class="w-4 h-4 shrink-0"></i>
+        <span>${message}</span>
+      `;
+      container.appendChild(toast);
+      lucide.createIcons({ nodes: [toast] });
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', '-translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 2600);
+    }
+
+    function updateClock() {
+      const el = document.getElementById('live-clock');
+      if (!el) return;
+      const now = new Date();
+      el.textContent = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
+        ' • ' + now.toLocaleDateString('vi-VN');
+    }
+
+    // ==================== SUPABASE DATABASE ====================
+    // Điền thông tin dự án Supabase của bạn (Project Settings -> API)
+    const SUPABASE_URL = 'https://agkpjtjcqsquqrysfgur.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable__A0GfunKLyKP0XIplMT-aA_NnLN0Hop';
+    const ORDERS_TABLE = 'osix_orders';
+    const INGREDIENTS_TABLE = 'osix_ingredients';
+    const MIGRATED_FLAG_KEY = 'osix_supabase_migrated_v1';
+
+    let sb = null;
+    try {
+      const configured = SUPABASE_URL.startsWith('https://') && !SUPABASE_URL.includes('YOUR-PROJECT-ID') && !SUPABASE_ANON_KEY.startsWith('YOUR-');
+      if (configured && window.supabase) {
+        sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      }
+    } catch (e) {
+      console.error('Không khởi tạo được Supabase:', e);
+      sb = null;
+    }
+
+    function dbReady() { return !!sb; }
+
+    function dbError(msg, err) {
+      console.error(msg, err);
+      showToast(msg + (err && err.message ? ': ' + err.message : ''), 'error');
+    }
+
+    // Mỗi dòng DB: id, date_key, created_at, data (toàn bộ object đơn / phiếu nhập dạng JSONB)
+    function orderToRow(o) {
+      return { id: o.id, date_key: o.dateKey, created_at: o.createdAt || new Date().toISOString(), data: o };
+    }
+    function ingredientToRow(i) {
+      const ts = Number(String(i.id || '').replace('NL-', ''));
+      return {
+        id: i.id,
+        date_key: i.dateKey,
+        created_at: i.createdAt || (ts ? new Date(ts).toISOString() : new Date().toISOString()),
+        data: i
+      };
+    }
+
+    async function fetchAllRows(table) {
+      const pageSize = 1000;
+      let from = 0;
+      const all = [];
+      while (true) {
+        const { data, error } = await sb
+          .from(table)
+          .select('data')
+          .order('created_at', { ascending: false })
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        all.push(...data.map(r => r.data));
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      return all;
+    }
+
+    function readLocal(key) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    function writeLocal(key, arr) {
+      try { localStorage.setItem(key, JSON.stringify(arr)); } catch (e) {}
+    }
+
+    // Đẩy dữ liệu cũ trong localStorage lên Supabase (một lần, không xóa dữ liệu local)
+    async function migrateLocalDataToSupabase() {
+      if (!dbReady()) return;
+      try {
+        if (localStorage.getItem(MIGRATED_FLAG_KEY) === '1') return;
+      } catch (e) {}
+      const localOrders = readLocal(STORAGE_KEY);
+      const localIngs = readLocal(INGREDIENTS_STORAGE_KEY);
+      if (localOrders.length === 0 && localIngs.length === 0) {
+        try { localStorage.setItem(MIGRATED_FLAG_KEY, '1'); } catch (e) {}
+        return;
+      }
+      try {
+        if (localOrders.length > 0) {
+          const { error } = await sb.from(ORDERS_TABLE).upsert(localOrders.map(orderToRow), { onConflict: 'id' });
+          if (error) throw error;
+        }
+        if (localIngs.length > 0) {
+          const { error } = await sb.from(INGREDIENTS_TABLE).upsert(localIngs.map(ingredientToRow), { onConflict: 'id' });
+          if (error) throw error;
+        }
+        try { localStorage.setItem(MIGRATED_FLAG_KEY, '1'); } catch (e) {}
+        showToast(`Đã chuyển ${localOrders.length} đơn & ${localIngs.length} phiếu nhập từ trình duyệt lên Supabase`);
+      } catch (err) {
+        dbError('Chuyển dữ liệu cũ lên Supabase thất bại', err);
+      }
+    }
+
+    async function loadOrdersFromStorage() {
+      if (!dbReady()) {
+        state.ordersHistory = readLocal(STORAGE_KEY);
+        return;
+      }
+      try {
+        state.ordersHistory = await fetchAllRows(ORDERS_TABLE);
+      } catch (err) {
+        dbError('Không tải được đơn hàng từ Supabase', err);
+        state.ordersHistory = readLocal(STORAGE_KEY);
+      }
+    }
+
+    async function loadIngredientsFromStorage() {
+      if (!dbReady()) {
+        state.ingredientsHistory = readLocal(INGREDIENTS_STORAGE_KEY);
+        return;
+      }
+      try {
+        state.ingredientsHistory = await fetchAllRows(INGREDIENTS_TABLE);
+      } catch (err) {
+        dbError('Không tải được nguyên liệu từ Supabase', err);
+        state.ingredientsHistory = readLocal(INGREDIENTS_STORAGE_KEY);
+      }
+    }
+
+    async function dbInsertOrder(order) {
+      if (!dbReady()) { writeLocal(STORAGE_KEY, state.ordersHistory); return true; }
+      const { error } = await sb.from(ORDERS_TABLE).insert(orderToRow(order));
+      if (error) { dbError('Lưu đơn hàng lên Supabase thất bại', error); return false; }
+      return true;
+    }
+
+    async function dbDeleteOrders(ids) {
+      if (!dbReady()) { writeLocal(STORAGE_KEY, state.ordersHistory); return true; }
+      const { error } = await sb.from(ORDERS_TABLE).delete().in('id', ids);
+      if (error) { dbError('Xóa đơn hàng trên Supabase thất bại', error); return false; }
+      return true;
+    }
+
+    async function dbInsertIngredient(entry) {
+      if (!dbReady()) { writeLocal(INGREDIENTS_STORAGE_KEY, state.ingredientsHistory); return true; }
+      const { error } = await sb.from(INGREDIENTS_TABLE).insert(ingredientToRow(entry));
+      if (error) { dbError('Lưu phiếu nhập lên Supabase thất bại', error); return false; }
+      return true;
+    }
+
+    async function dbDeleteIngredient(id) {
+      if (!dbReady()) { writeLocal(INGREDIENTS_STORAGE_KEY, state.ingredientsHistory); return true; }
+      const { error } = await sb.from(INGREDIENTS_TABLE).delete().eq('id', id);
+      if (error) { dbError('Xóa phiếu nhập trên Supabase thất bại', error); return false; }
+      return true;
+    }
+
+
+    const PRODUCT_IMAGES_DB_NAME = 'osix_pos_product_images_db';
+    const PRODUCT_IMAGES_STORE = 'product_images';
+    let customProductImages = {}; // { [itemId]: dataUrl }
+
+    function openProductImagesDB() {
+      return new Promise((resolve, reject) => {
+        if (!window.indexedDB) {
+          reject(new Error('No IndexedDB'));
+          return;
+        }
+        const req = indexedDB.open(PRODUCT_IMAGES_DB_NAME, 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(PRODUCT_IMAGES_STORE)) {
+            db.createObjectStore(PRODUCT_IMAGES_STORE);
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function loadCustomProductImages() {
+      try {
+        const db = await openProductImagesDB();
+        const map = await new Promise((resolve, reject) => {
+          const tx = db.transaction(PRODUCT_IMAGES_STORE, 'readonly');
+          const store = tx.objectStore(PRODUCT_IMAGES_STORE);
+          const result = {};
+          const cursorReq = store.openCursor();
+          cursorReq.onsuccess = (e) => {
+            const cursor = e.target.result;
+            if (cursor) {
+              result[cursor.key] = cursor.value;
+              cursor.continue();
+            } else {
+              resolve(result);
+            }
+          };
+          cursorReq.onerror = () => reject(cursorReq.error);
+        });
+        customProductImages = map || {};
+      } catch (_) {
+        try {
+          const raw = localStorage.getItem('osix_custom_product_images_v1');
+          customProductImages = raw ? JSON.parse(raw) : {};
+        } catch (e) {
+          customProductImages = {};
+        }
+      }
+    }
+
+    async function saveCustomProductImage(itemId, dataUrl) {
+      customProductImages[itemId] = dataUrl;
+      try {
+        const db = await openProductImagesDB();
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(PRODUCT_IMAGES_STORE, 'readwrite');
+          const store = tx.objectStore(PRODUCT_IMAGES_STORE);
+          const req = store.put(dataUrl, itemId);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      } catch (_) {
+        try {
+          localStorage.setItem('osix_custom_product_images_v1', JSON.stringify(customProductImages));
+        } catch (e) {}
+      }
+    }
+
+    async function removeCustomProductImage(itemId) {
+      delete customProductImages[itemId];
+      try {
+        const db = await openProductImagesDB();
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(PRODUCT_IMAGES_STORE, 'readwrite');
+          const store = tx.objectStore(PRODUCT_IMAGES_STORE);
+          const req = store.delete(itemId);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      } catch (_) {
+        try {
+          localStorage.setItem('osix_custom_product_images_v1', JSON.stringify(customProductImages));
+        } catch (e) {}
+      }
+    }
+
+    // Tự động tách nền & nén ảnh thành PNG nền trong suốt (chạy hoàn toàn offline trên trình duyệt)
+    function colorDistanceSq(r1, g1, b1, r2, g2, b2) {
+      const dr = r1 - r2;
+      const dg = g1 - g2;
+      const db = b1 - b2;
+      return dr * dr + dg * dg + db * db;
+    }
+
+    function autoRemoveBackgroundFromCanvas(ctx, width, height) {
+      const imgData = ctx.getImageData(0, 0, width, height);
+      const data = imgData.data;
+      const totalPixels = width * height;
+
+      // 1. Lấy mẫu màu dọc 4 cạnh ngoài cùng để nhận diện màu nền chủ đạo
+      const borderSamples = [];
+      const step = Math.max(1, Math.floor(Math.min(width, height) / 40));
+
+      for (let x = 0; x < width; x += step) {
+        const topIdx = x * 4;
+        if (data[topIdx + 3] > 200) {
+          borderSamples.push([data[topIdx], data[topIdx + 1], data[topIdx + 2]]);
+        }
+        const botIdx = ((height - 1) * width + x) * 4;
+        if (data[botIdx + 3] > 200) {
+          borderSamples.push([data[botIdx], data[botIdx + 1], data[botIdx + 2]]);
+        }
+      }
+      for (let y = 0; y < height; y += step) {
+        const leftIdx = (y * width) * 4;
+        if (data[leftIdx + 3] > 200) {
+          borderSamples.push([data[leftIdx], data[leftIdx + 1], data[leftIdx + 2]]);
+        }
+        const rightIdx = (y * width + (width - 1)) * 4;
+        if (data[rightIdx + 3] > 200) {
+          borderSamples.push([data[rightIdx], data[rightIdx + 1], data[rightIdx + 2]]);
+        }
+      }
+
+      if (borderSamples.length === 0) return;
+
+      // Tìm cụm màu nền phổ biến nhất quanh viền bằng lượng tử hóa nhẹ (bước 24)
+      const buckets = new Map();
+      for (const [r, g, b] of borderSamples) {
+        const kr = Math.round(r / 24) * 24;
+        const kg = Math.round(g / 24) * 24;
+        const kb = Math.round(b / 24) * 24;
+        const key = `${kr},${kg},${kb}`;
+        const entry = buckets.get(key) || { count: 0, sumR: 0, sumG: 0, sumB: 0 };
+        entry.count += 1;
+        entry.sumR += r;
+        entry.sumG += g;
+        entry.sumB += b;
+        buckets.set(key, entry);
+      }
+
+      let bestBucket = null;
+      for (const entry of buckets.values()) {
+        if (!bestBucket || entry.count > bestBucket.count) {
+          bestBucket = entry;
+        }
+      }
+
+      const bgR = bestBucket.sumR / bestBucket.count;
+      const bgG = bestBucket.sumG / bestBucket.count;
+      const bgB = bestBucket.sumB / bestBucket.count;
+
+      // Tính độ đồng nhất màu nền để điều chỉnh ngưỡng tách nền linh hoạt
+      let varianceSum = 0;
+      for (const [r, g, b] of borderSamples) {
+        varianceSum += colorDistanceSq(r, g, b, bgR, bgG, bgB);
+      }
+      const avgDist = Math.sqrt(varianceSum / borderSamples.length);
+
+      const innerDist = Math.max(26, Math.min(72, avgDist * 1.45 + 24));
+      const outerDist = innerDist + 34;
+      const innerSq = innerDist * innerDist;
+      const outerSq = outerDist * outerDist;
+
+      // 2. Flood-fill từ toàn bộ viền ngoài vào để xóa nền liền mạch (tránh làm rỗng phần sáng bên trong ly/món)
+      const visited = new Uint8Array(totalPixels);
+      const bgMask = new Uint8Array(totalPixels); // 2 = nền chắc chắn, 1 = vùng rìa chuyển tiếp
+      const queue = new Int32Array(totalPixels);
+      let head = 0;
+      let tail = 0;
+
+      const tryEnqueue = (idx) => {
+        if (idx < 0 || idx >= totalPixels || visited[idx]) return;
+        const p = idx * 4;
+        if (data[p + 3] < 15) {
+          visited[idx] = 1;
+          bgMask[idx] = 2;
+          queue[tail++] = idx;
+          return;
+        }
+        const dSq = colorDistanceSq(data[p], data[p + 1], data[p + 2], bgR, bgG, bgB);
+        if (dSq <= outerSq) {
+          visited[idx] = 1;
+          queue[tail++] = idx;
+        }
+      };
+
+      for (let x = 0; x < width; x++) {
+        tryEnqueue(x);
+        tryEnqueue((height - 1) * width + x);
+      }
+      for (let y = 1; y < height - 1; y++) {
+        tryEnqueue(y * width);
+        tryEnqueue(y * width + (width - 1));
+      }
+
+      while (head < tail) {
+        const idx = queue[head++];
+        const p = idx * 4;
+        if (data[p + 3] < 15) {
+          bgMask[idx] = 2;
+        } else {
+          const dSq = colorDistanceSq(data[p], data[p + 1], data[p + 2], bgR, bgG, bgB);
+          if (dSq <= innerSq) {
+            bgMask[idx] = 2;
+          } else if (dSq <= outerSq) {
+            bgMask[idx] = 1;
+          } else {
+            continue;
+          }
+        }
+
+        const x = idx % width;
+        const y = (idx - x) / width;
+        if (x > 0) tryEnqueue(idx - 1);
+        if (x < width - 1) tryEnqueue(idx + 1);
+        if (y > 0) tryEnqueue(idx - width);
+        if (y < height - 1) tryEnqueue(idx + width);
+      }
+
+      // 3. Áp dụng độ trong suốt (alpha) cho vùng nền & làm mượt rìa (anti-alias)
+      for (let idx = 0; idx < totalPixels; idx++) {
+        const p = idx * 4;
+        if (bgMask[idx] === 2) {
+          data[p + 3] = 0;
+        } else if (bgMask[idx] === 1) {
+          const dist = Math.sqrt(colorDistanceSq(data[p], data[p + 1], data[p + 2], bgR, bgG, bgB));
+          const ratio = Math.max(0, Math.min(1, (dist - innerDist) / Math.max(1, outerDist - innerDist)));
+          const smoothRatio = ratio * ratio * (3 - 2 * ratio);
+          data[p + 3] = Math.round(data[p + 3] * smoothRatio);
+        }
+      }
+
+      // 4. Làm mềm nhẹ ở rìa tiếp xúc nền để viền bớt gắt
+      const copyData = new Uint8ClampedArray(data);
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const idx = y * width + x;
+          if (bgMask[idx] !== 0) continue;
+          const p = idx * 4;
+          const a = copyData[p + 3];
+          if (a === 0) continue;
+
+          const touchesBg =
+            bgMask[idx - 1] === 2 ||
+            bgMask[idx + 1] === 2 ||
+            bgMask[idx - width] === 2 ||
+            bgMask[idx + width] === 2;
+
+          if (touchesBg) {
+            const dSq = colorDistanceSq(copyData[p], copyData[p + 1], copyData[p + 2], bgR, bgG, bgB);
+            if (dSq < outerSq * 1.35) {
+              data[p + 3] = Math.round(a * 0.72);
+            }
+          }
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    // Xử lý ảnh: tự động xóa nền và xuất ra PNG nền trong suốt
+    function compressImageFileToDataURL(file, maxSize = 240, quality = 0.85) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.onload = () => {
+            let w = img.width;
+            let h = img.height;
+            if (w > maxSize || h > maxSize) {
+              if (w > h) {
+                h = Math.round((h * maxSize) / w);
+                w = maxSize;
+              } else {
+                w = Math.round((w * maxSize) / h);
+                h = maxSize;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+
+            try {
+              autoRemoveBackgroundFromCanvas(ctx, w, h);
+            } catch (bgErr) {
+              console.warn('Bỏ qua bước tách nền tự động:', bgErr);
+            }
+
+            resolve(canvas.toDataURL('image/png'));
+          };
+          img.onerror = reject;
+          img.src = ev.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    let pendingImageUploadItemId = null;
+
+    function triggerProductImageUpload(itemId) {
+      pendingImageUploadItemId = itemId;
+      let fileInput = document.getElementById('hidden-product-image-input');
+      if (!fileInput) {
+        fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.id = 'hidden-product-image-input';
+        fileInput.accept = 'image/*';
+        fileInput.className = 'hidden';
+        fileInput.onchange = handleProductImageFileSelected;
+        document.body.appendChild(fileInput);
+      }
+      fileInput.value = '';
+      fileInput.click();
+    }
+
+    async function handleProductImageFileSelected(e) {
+      const file = e.target.files && e.target.files[0];
+      const itemId = pendingImageUploadItemId;
+      if (!file || !itemId) return;
+
+      const item = MENU_ITEMS.find(i => i.id === itemId);
+      try {
+        const dataUrl = await compressImageFileToDataURL(file, 300, 0.82);
+        await saveCustomProductImage(itemId, dataUrl);
+        renderMenuGrid();
+        renderCart();
+        if (state.modalItem && state.modalItem.id === itemId) {
+          updateModalHeaderMedia(state.modalItem);
+        }
+        showToast(`Đã tự động xóa nền & cập nhật ảnh cho "${item ? item.name : itemId}"`);
+      } catch (err) {
+        console.error('Lỗi tải ảnh sản phẩm:', err);
+        showToast('Không thể đọc file ảnh này, vui lòng thử ảnh khác!', 'error');
+      }
+    }
+
+    async function resetProductImage(itemId) {
+      const item = MENU_ITEMS.find(i => i.id === itemId);
+      await removeCustomProductImage(itemId);
+      renderMenuGrid();
+      renderCart();
+      if (state.modalItem && state.modalItem.id === itemId) {
+        updateModalHeaderMedia(state.modalItem);
+      }
+      showToast(`Đã khôi phục mặc định cho "${item ? item.name : itemId}"`, 'info');
+    }
+
+    // Danh sách nguồn ảnh ưu tiên theo quy tắc tự động khớp tên sản phẩm trong thư mục pic (G:\My Drive\caphe\pic):
+    // 1. Ảnh đã đồng bộ tự động từ thư mục G:\My Drive\caphe\pic (IndexedDB)
+    // 2. Đường dẫn tương đối pic/<Tên sản phẩm>.(png|jpg|jpeg|webp) khi đặt file web tại G:\My Drive\caphe\
+    // 3. Ảnh dự phòng images/<id>.jpg -> emoji
+    function getProductImageCandidates(item) {
+      if (!item) return [];
+      const candidates = [];
+      if (customProductImages[item.id]) {
+        candidates.push(customProductImages[item.id]);
+      }
+      if (item.image) {
+        candidates.push(item.image);
+      }
+      const exts = ['png', 'jpg', 'jpeg', 'webp'];
+      for (const ext of exts) {
+        candidates.push(`pic/${item.name}.${ext}`);
+      }
+      candidates.push(`images/${item.id}.jpg`);
+      return candidates;
+    }
+
+    function getProductImageSrc(item) {
+      const candidates = getProductImageCandidates(item);
+      return candidates.length > 0 ? candidates[0] : '';
+    }
+
+    function handleProductImgError(imgEl, itemId) {
+      const item = MENU_ITEMS.find(i => i.id === itemId);
+      if (!item) {
+        imgEl.onerror = null;
+        imgEl.style.display = 'none';
+        if (imgEl.nextElementSibling) imgEl.nextElementSibling.style.display = 'flex';
+        return;
+      }
+      const candidates = getProductImageCandidates(item);
+      const nextIdx = (parseInt(imgEl.dataset.fallbackIdx || '0', 10)) + 1;
+      if (nextIdx < candidates.length) {
+        imgEl.dataset.fallbackIdx = String(nextIdx);
+        imgEl.src = candidates[nextIdx];
+      } else {
+        imgEl.onerror = null;
+        imgEl.style.display = 'none';
+        if (imgEl.nextElementSibling) {
+          imgEl.nextElementSibling.style.display = 'flex';
+        }
+      }
+    }
+
+    function renderProductMediaHtml(item, sizeClass = 'w-full h-32 sm:h-36', textClass = 'text-4xl') {
+      const src = getProductImageSrc(item);
+      return `
+        <div class="${sizeClass} rounded-2xl bg-gradient-to-br from-cream-100 to-espresso-100 flex items-center justify-center overflow-hidden relative">
+          <img
+            src="${src}"
+            data-fallback-idx="0"
+            alt="${item.name}"
+            class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
+            onerror="handleProductImgError(this, '${item.id}')"
+          />
+          <span style="display:none;" class="${textClass} items-center justify-center w-full h-full select-none">${item.emoji}</span>
+        </div>
+      `;
+    }
+
+
+    function normalizeProductNameKey(str) {
+      if (!str) return '';
+      return str
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+    }
+
+    function updateLoadedImagesBadge() {
+      const badge = document.getElementById('loaded-images-badge');
+      if (!badge) return;
+      const count = Object.keys(customProductImages).length;
+      if (count > 0) {
+        badge.textContent = count;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+
+    function matchFileToMenuItem(fileName) {
+      // Bỏ phần đuôi mở rộng (.jpg, .png, .webp...)
+      const baseName = fileName.replace(/\.[^/.]+$/, '');
+      const normFile = normalizeProductNameKey(baseName);
+      if (!normFile) return null;
+
+      // 1. Khớp chính xác tên sản phẩm (chuẩn hóa không dấu) hoặc mã ID món
+      for (const item of MENU_ITEMS) {
+        if (
+          normalizeProductNameKey(item.name) === normFile ||
+          normalizeProductNameKey(item.id) === normFile
+        ) {
+          return item;
+        }
+      }
+      return null;
+    }
+
+    // ==================== TỰ ĐỘNG ĐỒNG BỘ ẢNH TỪ G:\My Drive\caphe\pic ====================
+    const TARGET_PIC_FOLDER_PATH = 'G:\\My Drive\\caphe\\pic';
+    const PIC_FOLDER_HANDLE_KEY = 'pic_caphe_dir';
+    const PIC_SYNC_META_STORAGE_KEY = 'osix_pic_folder_sync_meta_v1';
+    let picFolderWatcherTimer = null;
+    let isSyncingPicFolder = false;
+
+    function updatePicSyncStatusUI(isConnected) {
+      const dot = document.getElementById('pic-sync-dot');
+      const btn = document.getElementById('sync-pic-folder-btn');
+      if (dot) {
+        if (isConnected) {
+          dot.classList.remove('hidden');
+        } else {
+          dot.classList.add('hidden');
+        }
+      }
+      if (btn) {
+        btn.title = isConnected
+          ? `Đã kết nối tự động với ${TARGET_PIC_FOLDER_PATH} (bấm để quét cập nhật ngay)`
+          : `Tự động nạp ảnh từ ${TARGET_PIC_FOLDER_PATH} khi tên ảnh trùng tên sản phẩm`;
+      }
+    }
+
+    async function getSavedPicDirHandle() {
+      try {
+        const db = await openFolderHandleDB();
+        return await new Promise((resolve, reject) => {
+          const tx = db.transaction(FOLDER_HANDLE_STORE_NAME, 'readonly');
+          const store = tx.objectStore(FOLDER_HANDLE_STORE_NAME);
+          const req = store.get(PIC_FOLDER_HANDLE_KEY);
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => reject(req.error);
+        });
+      } catch (_) {
+        return null;
+      }
+    }
+
+    async function savePicDirHandle(dirHandle) {
+      try {
+        const db = await openFolderHandleDB();
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(FOLDER_HANDLE_STORE_NAME, 'readwrite');
+          const store = tx.objectStore(FOLDER_HANDLE_STORE_NAME);
+          const req = store.put(dirHandle, PIC_FOLDER_HANDLE_KEY);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      } catch (_) {}
+    }
+
+    function getPicSyncMeta() {
+      try {
+        const raw = localStorage.getItem(PIC_SYNC_META_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch (_) {
+        return {};
+      }
+    }
+
+    function savePicSyncMeta(meta) {
+      try {
+        localStorage.setItem(PIC_SYNC_META_STORAGE_KEY, JSON.stringify(meta));
+      } catch (_) {}
+    }
+
+    function isSupportedImageFileName(fileName) {
+      return /\.(png|jpe?g|webp|gif|bmp|jfif)$/i.test(fileName || '');
+    }
+
+    async function scanAndSyncPicDirectory(dirHandle, { silent = false, forceFullRescan = false } = {}) {
+      if (!dirHandle || isSyncingPicFolder) return;
+      isSyncingPicFolder = true;
+
+      try {
+        const prevMeta = getPicSyncMeta();
+        const nextMeta = {};
+        const seenItemIds = new Set();
+        let updatedCount = 0;
+        let removedCount = 0;
+
+        for await (const [entryName, handle] of dirHandle.entries()) {
+          if (handle.kind !== 'file' || !isSupportedImageFileName(entryName)) continue;
+
+          const matchedItem = matchFileToMenuItem(entryName);
+          if (!matchedItem) continue;
+
+          seenItemIds.add(matchedItem.id);
+          try {
+            const file = await handle.getFile();
+            const sig = `${file.size}_${file.lastModified}`;
+            const prevEntry = prevMeta[matchedItem.id];
+
+            if (!forceFullRescan && prevEntry && prevEntry.signature === sig && customProductImages[matchedItem.id]) {
+              nextMeta[matchedItem.id] = prevEntry;
+            } else {
+              const dataUrl = await compressImageFileToDataURL(file, 300, 0.82);
+              await saveCustomProductImage(matchedItem.id, dataUrl);
+              nextMeta[matchedItem.id] = { signature: sig, fileName: entryName };
+              updatedCount++;
+            }
+          } catch (fileErr) {
+            console.error('Lỗi đọc file ảnh trong thư mục pic:', entryName, fileErr);
+          }
+        }
+
+        // Xóa cache của những sản phẩm trước đó nạp từ thư mục pic nhưng nay file không còn trong thư mục
+        for (const oldItemId of Object.keys(prevMeta)) {
+          if (!seenItemIds.has(oldItemId)) {
+            await removeCustomProductImage(oldItemId);
+            removedCount++;
+          }
+        }
+
+        savePicSyncMeta(nextMeta);
+        updateLoadedImagesBadge();
+        updatePicSyncStatusUI(true);
+
+        if (updatedCount > 0 || removedCount > 0 || !silent) {
+          renderMenuGrid();
+          renderCart();
+          if (state.modalItem) {
+            updateModalHeaderMedia(state.modalItem);
+          }
+        }
+
+        if (!silent) {
+          if (updatedCount > 0 || removedCount > 0) {
+            showToast(`Đã tự động cập nhật ${updatedCount} ảnh khớp tên sản phẩm từ ${TARGET_PIC_FOLDER_PATH}!`);
+          } else if (seenItemIds.size > 0) {
+            showToast(`Đã đồng bộ ${seenItemIds.size} ảnh khớp tên sản phẩm từ ${TARGET_PIC_FOLDER_PATH}!`, 'info');
+          } else {
+            showToast(`Không có ảnh nào trong ${TARGET_PIC_FOLDER_PATH} trùng tên sản phẩm!`, 'error');
+          }
+        } else if (updatedCount > 0) {
+          showToast(`Tự động cập nhật ${updatedCount} ảnh mới từ ${TARGET_PIC_FOLDER_PATH}!`);
+        }
+      } catch (err) {
+        console.error('Lỗi quét thư mục ảnh:', err);
+        if (!silent) {
+          showToast('Không thể đọc thư mục ảnh, vui lòng chọn lại thư mục!', 'error');
+        }
+      } finally {
+        isSyncingPicFolder = false;
+      }
+    }
+
+    function startPicFolderAutoWatcher(dirHandle) {
+      if (picFolderWatcherTimer) {
+        clearInterval(picFolderWatcherTimer);
+      }
+      picFolderWatcherTimer = setInterval(async () => {
+        try {
+          if (document.hidden) return;
+          const perm = await dirHandle.queryPermission({ mode: 'read' });
+          if (perm === 'granted') {
+            await scanAndSyncPicDirectory(dirHandle, { silent: true, forceFullRescan: false });
+          }
+        } catch (_) {}
+      }, 10000);
+    }
+
+    async function autoSyncPicFolderOnStartup() {
+      if (typeof window.showDirectoryPicker !== 'function') return;
+      try {
+        const dirHandle = await getSavedPicDirHandle();
+        if (!dirHandle) return;
+        const perm = await dirHandle.queryPermission({ mode: 'read' });
+        if (perm === 'granted') {
+          updatePicSyncStatusUI(true);
+          await scanAndSyncPicDirectory(dirHandle, { silent: true, forceFullRescan: false });
+          startPicFolderAutoWatcher(dirHandle);
+        }
+      } catch (_) {}
+    }
+
+    async function syncProductImagesFromPicFolder(forceChooseFolder = false) {
+      if (typeof window.showDirectoryPicker !== 'function') {
+        triggerBulkProductImagesUpload(true);
+        return;
+      }
+
+      try {
+        let dirHandle = forceChooseFolder ? null : await getSavedPicDirHandle();
+
+        if (dirHandle) {
+          let perm = await dirHandle.queryPermission({ mode: 'read' });
+          if (perm !== 'granted') {
+            perm = await dirHandle.requestPermission({ mode: 'read' });
+          }
+          if (perm !== 'granted') {
+            dirHandle = null;
+          }
+        }
+
+        if (!dirHandle) {
+          showToast(`Vui lòng chọn thư mục ${TARGET_PIC_FOLDER_PATH} (tự động ghi nhớ cho các lần sau)`, 'info');
+          dirHandle = await window.showDirectoryPicker({
+            id: 'osix-caphe-pic-dir',
+            mode: 'read'
+          });
+          await savePicDirHandle(dirHandle);
+        }
+
+        await scanAndSyncPicDirectory(dirHandle, {
+          silent: false,
+          forceFullRescan: forceChooseFolder
+        });
+        startPicFolderAutoWatcher(dirHandle);
+      } catch (err) {
+        if (err && err.name === 'AbortError') {
+          showToast('Đã hủy chọn thư mục ảnh', 'info');
+          return;
+        }
+        console.warn('Chuyển sang chế độ chọn thư mục dự phòng:', err);
+        triggerBulkProductImagesUpload(true);
+      }
+    }
+
+    function triggerBulkProductImagesUpload(selectFolder = false) {
+      let input = document.getElementById('bulk-product-images-input');
+      if (!input) {
+        input = document.createElement('input');
+        input.type = 'file';
+        input.id = 'bulk-product-images-input';
+        input.accept = 'image/*';
+        input.multiple = true;
+        input.className = 'hidden';
+        input.onchange = handleBulkProductImagesSelected;
+        document.body.appendChild(input);
+      }
+      if (selectFolder) {
+        input.setAttribute('webkitdirectory', '');
+        input.setAttribute('directory', '');
+      } else {
+        input.removeAttribute('webkitdirectory');
+        input.removeAttribute('directory');
+      }
+      input.value = '';
+      input.click();
+    }
+
+    async function handleBulkProductImagesSelected(e) {
+      const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
+
+      let matchedCount = 0;
+
+      for (const file of files) {
+        if (!file.type.startsWith('image/') && !isSupportedImageFileName(file.name)) continue;
+        const matchedItem = matchFileToMenuItem(file.name);
+        if (matchedItem) {
+          try {
+            const dataUrl = await compressImageFileToDataURL(file, 300, 0.82);
+            await saveCustomProductImage(matchedItem.id, dataUrl);
+            matchedCount++;
+          } catch (err) {
+            console.error('Lỗi đọc ảnh:', file.name, err);
+          }
+        }
+      }
+
+      updateLoadedImagesBadge();
+      renderMenuGrid();
+      renderCart();
+      if (state.modalItem) {
+        updateModalHeaderMedia(state.modalItem);
+      }
+
+      if (matchedCount > 0) {
+        showToast(`Đã tự động xóa nền & nạp ${matchedCount} ảnh khớp tên sản phẩm!`);
+      } else {
+        showToast('Không có tên ảnh nào trùng với tên sản phẩm trong menu!', 'error');
+      }
+    }
+
+    // ==================== INITIALIZATION ====================
+    async function initApp() {
+      if (!dbReady()) {
+        showToast('Chưa cấu hình Supabase - đang dùng tạm bộ nhớ trình duyệt', 'info');
+      }
+      await migrateLocalDataToSupabase();
+      await Promise.all([loadOrdersFromStorage(), loadIngredientsFromStorage()]);
+      await loadCustomProductImages();
+      updateLoadedImagesBadge();
+      renderCategoryTabs();
+      renderMenuGrid();
+      renderCart();
+      autoSyncPicFolderOnStartup();
+      updateHistoryStats();
+      updateIngredientsStats();
+      syncHistoryDateFilterUI();
+      syncIngredientDateFilterUI();
+
+      updateClock();
+      setInterval(updateClock, 1000);
+      window.addEventListener('resize', handleModalWindowResize);
+      lucide.createIcons();
+    }
+
+    // ==================== NAVIGATION ====================
+    function switchMainView(view) {
+      state.selectedOrderIds = [];
+      if (state.modalItem) {
+        closeCustomModal();
+      }
+
+      state.activeView = view;
+      const posView = document.getElementById('view-pos');
+      const ingredientsView = document.getElementById('view-ingredients');
+      const historyView = document.getElementById('view-history');
+
+      const posBtn = document.getElementById('nav-pos-btn');
+      const ingredientsBtn = document.getElementById('nav-ingredients-btn');
+      const historyBtn = document.getElementById('nav-history-btn');
+
+      const activeClass = 'shrink-0 flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-amber-600 text-white shadow-sm';
+      const inactiveClass = 'shrink-0 flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all text-espresso-200 hover:text-white';
+
+      posView.classList.add('hidden');
+      ingredientsView.classList.add('hidden');
+      historyView.classList.add('hidden');
+
+      posBtn.className = inactiveClass;
+      ingredientsBtn.className = inactiveClass;
+      historyBtn.className = inactiveClass;
+
+      if (view === 'pos') {
+        posView.classList.remove('hidden');
+        posBtn.className = activeClass;
+      } else if (view === 'ingredients') {
+        ingredientsView.classList.remove('hidden');
+        ingredientsBtn.className = activeClass;
+        renderIngredientsList();
+      } else {
+        historyView.classList.remove('hidden');
+        historyBtn.className = activeClass;
+        renderHistoryList();
+      }
+
+      updateHistoryStats();
+      updateIngredientsStats();
+      lucide.createIcons();
+    }
+
+    // ==================== INGREDIENTS MANAGEMENT & DATE FILTER ====================
+    function getFilteredIngredients() {
+      if (!state.ingredientFilterDate) {
+        return state.ingredientsHistory;
+      }
+      return state.ingredientsHistory.filter(item => item.dateKey === state.ingredientFilterDate);
+    }
+
+    function syncIngredientDateFilterUI() {
+      const dateInput = document.getElementById('ingredient-date-filter');
+      const todayBtn = document.getElementById('ing-filter-today-btn');
+      const allBtn = document.getElementById('ing-filter-all-btn');
+      if (!dateInput || !todayBtn || !allBtn) return;
+
+      const todayKey = getLocalDateKey();
+      dateInput.value = state.ingredientFilterDate;
+
+      const activeBtnClass = 'px-2.5 py-1.5 rounded-xl bg-espresso-900 text-white text-xs font-semibold transition-colors';
+      const inactiveBtnClass = 'px-2.5 py-1.5 rounded-xl border border-espresso-200 bg-white hover:bg-espresso-100 text-espresso-700 text-xs font-semibold transition-colors';
+
+      if (!state.ingredientFilterDate) {
+        allBtn.className = activeBtnClass;
+        todayBtn.className = inactiveBtnClass;
+      } else if (state.ingredientFilterDate === todayKey) {
+        todayBtn.className = activeBtnClass;
+        allBtn.className = inactiveBtnClass;
+      } else {
+        todayBtn.className = inactiveBtnClass;
+        allBtn.className = inactiveBtnClass;
+      }
+
+      const exportFilteredLabel = document.getElementById('export-ing-filtered-label');
+      if (exportFilteredLabel) {
+        exportFilteredLabel.textContent = state.ingredientFilterDate
+          ? `Xuất CSV (${formatDateKeyVN(state.ingredientFilterDate)})`
+          : 'Xuất CSV (Đang lọc)';
+      }
+    }
+
+    function handleIngredientDateFilter(dateVal) {
+      state.ingredientFilterDate = dateVal || '';
+      syncIngredientDateFilterUI();
+      renderIngredientsList();
+    }
+
+    function setIngredientDateFilterToday() {
+      state.ingredientFilterDate = getLocalDateKey();
+      syncIngredientDateFilterUI();
+      renderIngredientsList();
+    }
+
+    function clearIngredientDateFilter() {
+      state.ingredientFilterDate = '';
+      syncIngredientDateFilterUI();
+      renderIngredientsList();
+    }
+
+    function updateIngredientPreviewCost() {
+      const qty = parseFloat(document.getElementById('ing-qty').value) || 0;
+      const price = parseFloat(document.getElementById('ing-price').value) || 0;
+      const total = Math.max(0, Math.round(qty * price));
+      document.getElementById('ing-preview-total').textContent = formatVND(total);
+    }
+
+    async function handleAddIngredient(e) {
+      e.preventDefault();
+      const nameInput = document.getElementById('ing-name');
+      const qtyInput = document.getElementById('ing-qty');
+      const unitInput = document.getElementById('ing-unit');
+      const priceInput = document.getElementById('ing-price');
+      const noteInput = document.getElementById('ing-note');
+
+      const name = nameInput.value.trim();
+      const qty = parseFloat(qtyInput.value);
+      const unit = unitInput.value;
+      const unitPrice = parseFloat(priceInput.value);
+      const note = noteInput.value.trim();
+
+      if (!name || isNaN(qty) || qty <= 0 || isNaN(unitPrice) || unitPrice < 0) {
+        showToast('Vui lòng nhập đầy đủ tên, số lượng và đơn giá hợp lệ!', 'error');
+        return;
+      }
+
+      const totalCost = Math.round(qty * unitPrice);
+      const now = new Date();
+
+      const entry = {
+        id: 'NL-' + Date.now(),
+        name,
+        qty,
+        unit,
+        unitPrice,
+        totalCost,
+        note,
+        dateKey: getLocalDateKey(now),
+        formattedTime: now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' - ' + now.toLocaleDateString('vi-VN')
+      };
+
+      entry.createdAt = now.toISOString();
+      state.ingredientsHistory.unshift(entry);
+      const savedOk = await dbInsertIngredient(entry);
+      if (!savedOk) {
+        state.ingredientsHistory = state.ingredientsHistory.filter(i => i.id !== entry.id);
+        return;
+      }
+      updateIngredientsStats();
+      renderIngredientsList();
+
+      nameInput.value = '';
+      qtyInput.value = '1';
+      priceInput.value = '';
+      noteInput.value = '';
+      updateIngredientPreviewCost();
+      nameInput.focus();
+
+      showToast(`Đã nhập ${qty} ${unit} ${name} (${formatVND(totalCost)})`);
+    }
+
+    async function deleteIngredientEntry(id) {
+      const backup = state.ingredientsHistory;
+      state.ingredientsHistory = state.ingredientsHistory.filter(item => item.id !== id);
+      if (!(await dbDeleteIngredient(id))) {
+        state.ingredientsHistory = backup;
+        return;
+      }
+      updateIngredientsStats();
+      renderIngredientsList();
+      showToast('Đã xóa phiếu nhập nguyên liệu', 'info');
+    }
+
+    function updateIngredientsStats() {
+      const todayKey = getLocalDateKey();
+      const todayCost = state.ingredientsHistory
+        .filter(i => i.dateKey === todayKey)
+        .reduce((sum, i) => sum + i.totalCost, 0);
+
+      const totalCost = state.ingredientsHistory.reduce((sum, i) => sum + i.totalCost, 0);
+
+      const todayRevenue = state.ordersHistory
+        .filter(o => o.dateKey === todayKey)
+        .reduce((sum, o) => sum + o.total, 0);
+
+      const todayProfit = todayRevenue - todayCost;
+
+      document.getElementById('header-ingredient-count').textContent = state.ingredientsHistory.length;
+      document.getElementById('stat-ing-today-cost').textContent = formatVND(todayCost);
+      document.getElementById('stat-ing-total-cost').textContent = formatVND(totalCost);
+      document.getElementById('stat-ing-count').textContent = `${state.ingredientsHistory.length} phiếu`;
+
+      const profitEl = document.getElementById('stat-ing-today-profit');
+      profitEl.textContent = (todayProfit < 0 ? '-' : '') + formatVND(Math.abs(todayProfit));
+      profitEl.className = `text-xl font-extrabold mt-0.5 ${todayProfit < 0 ? 'text-rose-600' : 'text-matcha-700'}`;
+    }
+
+    function renderIngredientsList() {
+      const container = document.getElementById('ingredients-list-container');
+      syncIngredientDateFilterUI();
+
+      const filteredList = getFilteredIngredients();
+      const filteredTotalCost = filteredList.reduce((sum, i) => sum + i.totalCost, 0);
+
+      const costLabelEl = document.getElementById('table-ing-cost-label');
+      const costTotalEl = document.getElementById('table-ing-total-cost');
+      const summaryEl = document.getElementById('ingredient-filter-summary');
+
+      if (costLabelEl) {
+        costLabelEl.textContent = state.ingredientFilterDate
+          ? `Chi phí (${formatDateKeyVN(state.ingredientFilterDate)}):`
+          : 'Tổng chi phí:';
+      }
+      if (costTotalEl) {
+        costTotalEl.textContent = formatVND(filteredTotalCost);
+      }
+      if (summaryEl) {
+        summaryEl.textContent = state.ingredientFilterDate
+          ? `Ngày ${formatDateKeyVN(state.ingredientFilterDate)}: ${filteredList.length} phiếu`
+          : `Hiển thị ${filteredList.length} phiếu`;
+      }
+
+      if (state.ingredientsHistory.length === 0) {
+        container.innerHTML = `
+          <div class="py-16 px-4 text-center">
+            <div class="w-16 h-16 rounded-full bg-cream-100 text-espresso-400 flex items-center justify-center mx-auto mb-3">
+              <i data-lucide="package-open" class="w-8 h-8"></i>
+            </div>
+            <h3 class="font-bold text-espresso-900 text-base">Chưa có nguyên liệu nào được nhập</h3>
+            <p class="text-xs text-espresso-500 mt-1">Sử dụng biểu mẫu bên trái để nhập nguyên liệu và tính tổng chi phí.</p>
+          </div>
+        `;
+        lucide.createIcons({ nodes: [container] });
+        return;
+      }
+
+      if (filteredList.length === 0) {
+        container.innerHTML = `
+          <div class="py-14 px-4 text-center">
+            <div class="w-14 h-14 rounded-full bg-cream-100 text-espresso-400 flex items-center justify-center mx-auto mb-3">
+              <i data-lucide="calendar-x" class="w-7 h-7"></i>
+            </div>
+            <h3 class="font-bold text-espresso-900 text-sm">Không có phiếu nhập nguyên liệu nào trong ngày ${formatDateKeyVN(state.ingredientFilterDate)}</h3>
+            <button
+              type="button"
+              onclick="clearIngredientDateFilter()"
+              class="mt-3 px-3.5 py-1.5 rounded-xl bg-espresso-800 hover:bg-espresso-900 text-white text-xs font-semibold transition-colors"
+            >
+              Xem tất cả ngày
+            </button>
+          </div>
+        `;
+        lucide.createIcons({ nodes: [container] });
+        return;
+      }
+
+      container.innerHTML = filteredList.map(item => `
+        <div class="p-4 sm:p-5 hover:bg-cream-50/70 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="space-y-1 min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-extrabold text-espresso-900 text-sm">${item.name}</span>
+              <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                ${item.qty} ${item.unit}
+              </span>
+              <span class="text-xs text-espresso-500">
+                × ${formatVND(item.unitPrice)}/${item.unit}
+              </span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 text-xs text-espresso-400">
+              <span>${item.formattedTime}</span>
+              ${item.note ? `<span>• Ghi chú: <strong class="text-espresso-600 font-medium">${item.note}</strong></span>` : ''}
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-espresso-100">
+            <div class="text-left sm:text-right">
+              <div class="text-[11px] text-espresso-400">Thành tiền</div>
+              <div class="font-extrabold text-base text-rose-700">${formatVND(item.totalCost)}</div>
+            </div>
+            <button
+              onclick="deleteIngredientEntry('${item.id}')"
+              class="p-2 rounded-xl border border-espresso-200 bg-white hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 text-espresso-500 transition-colors"
+              title="Xóa phiếu nhập này"
+            >
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+      `).join('');
+
+      lucide.createIcons({ nodes: [container] });
+    }
+
+    // ==================== MENU & FILTERING ====================
+    function renderCategoryTabs() {
+      const container = document.getElementById('category-tabs');
+      container.innerHTML = CATEGORIES.map(cat => {
+        const isActive = state.selectedCategory === cat.id;
+        return `
+          <button
+            onclick="selectCategory('${cat.id}')"
+            class="shrink-0 flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all border ${
+              isActive
+                ? 'bg-espresso-900 text-cream-50 border-espresso-900 shadow-sm'
+                : 'bg-white text-espresso-700 border-espresso-200 hover:border-espresso-400 hover:bg-cream-50'
+            }"
+          >
+            <i data-lucide="${cat.icon}" class="w-4 h-4 ${isActive ? 'text-amber-400' : 'text-espresso-500'}"></i>
+            <span>${cat.name}</span>
+          </button>
+        `;
+      }).join('');
+      lucide.createIcons({ nodes: [container] });
+    }
+
+    function selectCategory(categoryId) {
+      state.selectedCategory = categoryId;
+      renderCategoryTabs();
+      renderMenuGrid();
+    }
+
+    function handleSearch(val) {
+      state.searchQuery = val.trim().toLowerCase();
+      const clearBtn = document.getElementById('clear-search-btn');
+      if (state.searchQuery.length > 0) {
+        clearBtn.classList.remove('hidden');
+      } else {
+        clearBtn.classList.add('hidden');
+      }
+      renderMenuGrid();
+    }
+
+    function clearSearch() {
+      const input = document.getElementById('search-input');
+      input.value = '';
+      handleSearch('');
+      input.focus();
+    }
+
+    function resetFilters() {
+      state.selectedCategory = 'all';
+      clearSearch();
+      renderCategoryTabs();
+      renderMenuGrid();
+    }
+
+    function renderMenuGrid() {
+      const grid = document.getElementById('menu-grid');
+      const emptyState = document.getElementById('menu-empty-state');
+      const countLabel = document.getElementById('menu-count-label');
+
+      const filtered = MENU_ITEMS.filter(item => {
+        const matchesCat = state.selectedCategory === 'all' || item.category === state.selectedCategory;
+        const matchesQuery = !state.searchQuery ||
+          item.name.toLowerCase().includes(state.searchQuery) ||
+          item.category.toLowerCase().includes(state.searchQuery);
+        return matchesCat && matchesQuery;
+      });
+
+      countLabel.textContent = filtered.length;
+
+      if (filtered.length === 0) {
+        grid.classList.add('hidden');
+        emptyState.classList.remove('hidden');
+        emptyState.classList.add('flex');
+        return;
+      }
+
+      grid.classList.remove('hidden');
+      emptyState.classList.add('hidden');
+      emptyState.classList.remove('flex');
+
+      grid.innerHTML = filtered.map(item => {
+        const inCartQty = state.cart
+          .filter(c => c.itemId === item.id)
+          .reduce((sum, c) => sum + c.qty, 0);
+        const isCurrentlyCustomizing = state.modalItem && state.modalItem.id === item.id;
+
+        return `
+          <div
+            data-menu-item-id="${item.id}"
+            onclick="openCustomModal('${item.id}')"
+            class="group relative bg-white rounded-2xl border ${
+              isCurrentlyCustomizing
+                ? 'border-amber-600 ring-2 ring-amber-500/40 shadow-md'
+                : 'border-espresso-200/90 hover:border-amber-500 shadow-xs hover:shadow-md'
+            } p-3 sm:p-3.5 flex flex-col justify-between active:scale-[0.98] transition-all cursor-pointer select-none"
+          >
+            ${inCartQty > 0 ? `
+              <span class="absolute top-4 right-4 z-10 bg-matcha-600 text-white text-[11px] font-extrabold px-2 py-0.5 rounded-full shadow-sm">
+                x${inCartQty}
+              </span>
+            ` : ''}
+
+            <div>
+              <div class="mb-2.5">
+                ${renderProductMediaHtml(item, 'w-16 h-16 sm:w-20 sm:h-20 shrink-0', 'text-2xl')}
+              </div>
+              <span class="inline-block text-[10px] font-bold uppercase tracking-wider text-espresso-500 bg-cream-100 px-2 py-0.5 rounded-md mb-1">
+                ${item.category}
+              </span>
+              <h3 class="font-bold text-espresso-900 text-sm sm:text-[15px] leading-snug group-hover:text-amber-700 transition-colors">
+                ${item.name}
+              </h3>
+              <p class="text-xs text-espresso-500 line-clamp-2 mt-1 leading-relaxed">
+                ${item.desc}
+              </p>
+            </div>
+
+            <div class="mt-3 pt-2.5 border-t border-espresso-100 flex items-center justify-between gap-2">
+              <span class="font-extrabold text-espresso-900 text-sm sm:text-base">${formatVND(item.price)}</span>
+              <button
+                type="button"
+                data-quick-add-id="${item.id}"
+                onclick="event.stopPropagation(); quickAddItem('${item.id}')"
+                title="Xuất nhanh 1 phần sang hóa đơn"
+                class="w-8 h-8 rounded-xl bg-espresso-100 hover:bg-espresso-900 text-espresso-800 hover:text-amber-400 flex items-center justify-center transition-colors shadow-2xs"
+              >
+                <i data-lucide="plus" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      lucide.createIcons({ nodes: [grid] });
+    }
+
+    function quickAddItem(itemId) {
+      const item = MENU_ITEMS.find(i => i.id === itemId);
+      if (!item) return;
+
+      const defaultIce = item.isFood ? null : '100%';
+      const defaultSugar = item.isFood ? null : '100%';
+      const defaultSize = item.isFood ? null : 'M';
+
+      const sig = JSON.stringify({
+        itemId: item.id,
+        size: defaultSize,
+        ice: defaultIce,
+        sugar: defaultSugar,
+        toppings: [],
+        note: ''
+      });
+
+      const existing = state.cart.find(c => c.sig === sig && !c.cardSwapped);
+      if (existing) {
+        existing.qty += 1;
+      } else {
+        state.cart.push({
+          uid: 'cart-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          sig,
+          itemId: item.id,
+          name: item.name,
+          emoji: item.emoji,
+          isFood: !!item.isFood,
+          basePrice: item.price,
+          unitPrice: item.price,
+          cardSwapped: false,
+          size: defaultSize,
+          ice: defaultIce,
+          sugar: defaultSugar,
+          toppings: [],
+          note: '',
+          qty: 1,
+        });
+      }
+
+      renderCart();
+      renderMenuGrid();
+      showToast(`Đã xuất 1x ${item.name} sang hóa đơn`);
+    }
+
+    // ==================== DRAGGABLE CUSTOMIZATION POP-UP ====================
+    function clampModalPosition(left, top) {
+      const card = document.getElementById('custom-modal-card');
+      const margin = 8;
+      const cardWidth = card.offsetWidth || 440;
+      const cardHeight = card.offsetHeight || 520;
+      const maxLeft = Math.max(margin, window.innerWidth - cardWidth - margin);
+      const maxTop = Math.max(margin, window.innerHeight - cardHeight - margin);
+
+      return {
+        left: Math.min(Math.max(margin, left), maxLeft),
+        top: Math.min(Math.max(margin, top), maxTop),
+      };
+    }
+
+    function applyModalPosition() {
+      const card = document.getElementById('custom-modal-card');
+      if (!card) return;
+
+      if (state.modalHasCustomPos && state.modalPos) {
+        const clamped = clampModalPosition(state.modalPos.left, state.modalPos.top);
+        state.modalPos = clamped;
+        card.style.left = `${clamped.left}px`;
+        card.style.top = `${clamped.top}px`;
+        card.style.right = 'auto';
+        card.style.bottom = 'auto';
+      } else {
+        const margin = 12;
+        const cardWidth = card.offsetWidth || Math.min(window.innerWidth - 24, 460);
+        const cardHeight = card.offsetHeight || 520;
+        const defaultLeft = Math.max(margin, window.innerWidth - cardWidth - margin);
+        const defaultTop = Math.max(76, Math.min(84, window.innerHeight - cardHeight - margin));
+        const clamped = clampModalPosition(defaultLeft, defaultTop);
+        card.style.left = `${clamped.left}px`;
+        card.style.top = `${clamped.top}px`;
+        card.style.right = 'auto';
+        card.style.bottom = 'auto';
+      }
+    }
+
+    function handleModalWindowResize() {
+      if (!state.modalItem) return;
+      applyModalPosition();
+    }
+
+    function startModalDrag(e) {
+      if (e.button !== undefined && e.button !== 0) return;
+      const card = document.getElementById('custom-modal-card');
+      const handle = document.getElementById('custom-modal-drag-handle');
+      if (!card || !handle) return;
+
+      const rect = card.getBoundingClientRect();
+      dragState = {
+        active: true,
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        originLeft: rect.left,
+        originTop: rect.top,
+      };
+
+      state.modalHasCustomPos = true;
+      handle.setPointerCapture(e.pointerId);
+      handle.addEventListener('pointermove', onModalDragMove);
+      handle.addEventListener('pointerup', stopModalDrag);
+      handle.addEventListener('pointercancel', stopModalDrag);
+    }
+
+    function onModalDragMove(e) {
+      if (!dragState.active || e.pointerId !== dragState.pointerId) return;
+      const dx = e.clientX - dragState.startX;
+      const dy = e.clientY - dragState.startY;
+      const nextPos = clampModalPosition(dragState.originLeft + dx, dragState.originTop + dy);
+      state.modalPos = nextPos;
+
+      const card = document.getElementById('custom-modal-card');
+      card.style.left = `${nextPos.left}px`;
+      card.style.top = `${nextPos.top}px`;
+      card.style.right = 'auto';
+      card.style.bottom = 'auto';
+    }
+
+    function stopModalDrag(e) {
+      if (!dragState.active) return;
+      const handle = document.getElementById('custom-modal-drag-handle');
+      if (handle) {
+        if (handle.hasPointerCapture(dragState.pointerId)) {
+          handle.releasePointerCapture(dragState.pointerId);
+        }
+        handle.removeEventListener('pointermove', onModalDragMove);
+        handle.removeEventListener('pointerup', stopModalDrag);
+        handle.removeEventListener('pointercancel', stopModalDrag);
+      }
+      dragState.active = false;
+      dragState.pointerId = null;
+    }
+
+    function handleCustomModalBackdropClick(event) {
+      if (dragState.active) return;
+
+      const modal = document.getElementById('custom-modal');
+      modal.style.pointerEvents = 'none';
+      const underlyingEl = document.elementFromPoint(event.clientX, event.clientY);
+      modal.style.pointerEvents = '';
+
+      if (underlyingEl) {
+        const quickAddBtn = underlyingEl.closest('[data-quick-add-id]');
+        if (quickAddBtn) {
+          const quickId = quickAddBtn.getAttribute('data-quick-add-id');
+          quickAddItem(quickId);
+          return;
+        }
+
+        const menuCard = underlyingEl.closest('[data-menu-item-id]');
+        if (menuCard) {
+          const targetItemId = menuCard.getAttribute('data-menu-item-id');
+          openCustomModal(targetItemId);
+          return;
+        }
+
+        const catBtn = underlyingEl.closest('#category-tabs button');
+        if (catBtn) {
+          catBtn.click();
+          return;
+        }
+      }
+
+      closeCustomModal();
+    }
+
+    function updateModalHeaderMedia(item) {
+      const iconBox = document.getElementById('modal-item-icon');
+      if (!iconBox || !item) return;
+      const src = getProductImageSrc(item);
+      iconBox.innerHTML = `
+        <img
+          src="${src}"
+          data-fallback-idx="0"
+          alt="${item.name}"
+          class="w-full h-full object-cover object-top rounded-2xl"
+          onerror="handleProductImgError(this, '${item.id}')"
+        />
+        <span style="display:none;" class="w-full h-full items-center justify-center text-2xl">${item.emoji}</span>
+      `;
+    }
+
+    function openCustomModal(itemId) {
+      const item = MENU_ITEMS.find(i => i.id === itemId);
+      if (!item) return;
+
+      state.modalItem = item;
+      state.modalSize = 'M';
+      state.modalIce = '100%';
+      state.modalSugar = '100%';
+      state.modalToppings = [];
+      state.modalNote = '';
+      state.modalQty = 1;
+
+      updateModalHeaderMedia(item);
+      document.getElementById('modal-item-category').textContent = item.category;
+      document.getElementById('modal-item-name').textContent = item.name;
+      document.getElementById('modal-item-base-price').textContent = formatVND(item.price);
+      document.getElementById('modal-note-input').value = '';
+      document.getElementById('modal-qty-value').textContent = '1';
+
+      const drinkOptionsEl = document.getElementById('modal-drink-options');
+      if (item.isFood) {
+        drinkOptionsEl.classList.add('hidden');
+      } else {
+        drinkOptionsEl.classList.remove('hidden');
+        renderModalOptions();
+      }
+
+      updateModalTotalPrice();
+      renderMenuGrid();
+
+      const modal = document.getElementById('custom-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('block');
+      lucide.createIcons({ nodes: [modal] });
+
+      requestAnimationFrame(() => {
+        applyModalPosition();
+      });
+    }
+
+    function closeCustomModal() {
+      const modal = document.getElementById('custom-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('block');
+      state.modalItem = null;
+      renderMenuGrid();
+    }
+
+    function renderModalOptions() {
+      document.querySelectorAll('.option-btn-size').forEach(btn => {
+        const val = btn.getAttribute('data-val');
+        if (val === state.modalSize) {
+          btn.className = 'option-btn-size px-3 py-2 rounded-xl border-2 border-espresso-800 bg-espresso-50 text-left transition-all';
+        } else {
+          btn.className = 'option-btn-size px-3 py-2 rounded-xl border-2 border-espresso-200 bg-white text-left hover:border-espresso-400 transition-all';
+        }
+      });
+
+      const iceGroup = document.getElementById('modal-ice-group');
+      iceGroup.innerHTML = ICE_LEVELS.map(ice => {
+        const active = state.modalIce === ice;
+        const label = ice.endsWith('%') ? `${ice} đá` : ice;
+        return `
+          <button
+            type="button"
+            onclick="selectOption('ice', '${ice}')"
+            class="px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              active
+                ? 'bg-espresso-800 text-white border-espresso-800 shadow-xs'
+                : 'bg-white text-espresso-700 border-espresso-200 hover:border-espresso-400'
+            }"
+          >${label}</button>
+        `;
+      }).join('');
+
+      const sugarGroup = document.getElementById('modal-sugar-group');
+      sugarGroup.innerHTML = SUGAR_LEVELS.map(sugar => {
+        const active = state.modalSugar === sugar;
+        const label = sugar.endsWith('%') ? `${sugar} đường` : sugar;
+        return `
+          <button
+            type="button"
+            onclick="selectOption('sugar', '${sugar}')"
+            class="px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              active
+                ? 'bg-matcha-600 text-white border-matcha-600 shadow-xs'
+                : 'bg-white text-espresso-700 border-espresso-200 hover:border-espresso-400'
+            }"
+          >${label}</button>
+        `;
+      }).join('');
+
+      const toppingsGroup = document.getElementById('modal-toppings-group');
+      toppingsGroup.innerHTML = TOPPINGS.map(tp => {
+        const checked = state.modalToppings.includes(tp.id);
+        return `
+          <button
+            type="button"
+            onclick="toggleTopping('${tp.id}')"
+            class="px-2.5 py-2 rounded-xl border text-left flex items-center justify-between gap-2 transition-all ${
+              checked
+                ? 'border-amber-600 bg-amber-50/80 text-espresso-900'
+                : 'border-espresso-200 bg-white text-espresso-700 hover:border-espresso-400'
+            }"
+          >
+            <div class="flex items-center gap-2 min-w-0">
+              <div class="w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
+                checked ? 'bg-amber-600 border-amber-600 text-white' : 'border-espresso-300 bg-white'
+              }">
+                ${checked ? '<i data-lucide="check" class="w-3 h-3"></i>' : ''}
+              </div>
+              <span class="text-xs font-semibold truncate">${tp.name}</span>
+            </div>
+            <span class="text-[11px] font-bold text-amber-700 shrink-0">+${formatVND(tp.price)}</span>
+          </button>
+        `;
+      }).join('');
+
+      lucide.createIcons({ nodes: [toppingsGroup] });
+    }
+
+    function selectOption(type, value) {
+      if (type === 'size') state.modalSize = value;
+      if (type === 'ice') state.modalIce = value;
+      if (type === 'sugar') state.modalSugar = value;
+      renderModalOptions();
+      updateModalTotalPrice();
+    }
+
+    function toggleTopping(toppingId) {
+      const idx = state.modalToppings.indexOf(toppingId);
+      if (idx > -1) {
+        state.modalToppings.splice(idx, 1);
+      } else {
+        state.modalToppings.push(toppingId);
+      }
+      renderModalOptions();
+      updateModalTotalPrice();
+    }
+
+    function changeModalQty(delta) {
+      state.modalQty = Math.max(1, state.modalQty + delta);
+      document.getElementById('modal-qty-value').textContent = state.modalQty;
+      updateModalTotalPrice();
+    }
+
+    function calculateModalUnitPrice() {
+      if (!state.modalItem) return 0;
+      let price = state.modalItem.price;
+      if (!state.modalItem.isFood) {
+        if (state.modalSize === 'L') price += 5000;
+        state.modalToppings.forEach(tpId => {
+          const tp = TOPPINGS.find(t => t.id === tpId);
+          if (tp) price += tp.price;
+        });
+      }
+      return price;
+    }
+
+    function updateModalTotalPrice() {
+      const total = calculateModalUnitPrice() * state.modalQty;
+      document.getElementById('modal-total-price').textContent = formatVND(total);
+    }
+
+    function confirmAddToCart() {
+      if (!state.modalItem) return;
+      const note = document.getElementById('modal-note-input').value.trim();
+      const unitPrice = calculateModalUnitPrice();
+      const selectedToppingsObjs = state.modalToppings
+        .map(id => TOPPINGS.find(t => t.id === id))
+        .filter(Boolean);
+
+      const sig = JSON.stringify({
+        itemId: state.modalItem.id,
+        size: state.modalItem.isFood ? null : state.modalSize,
+        ice: state.modalItem.isFood ? null : state.modalIce,
+        sugar: state.modalItem.isFood ? null : state.modalSugar,
+        toppings: selectedToppingsObjs.map(t => t.id).sort(),
+        note
+      });
+
+      const existing = state.cart.find(c => c.sig === sig && !c.cardSwapped);
+      if (existing) {
+        existing.qty += state.modalQty;
+      } else {
+        state.cart.push({
+          uid: 'cart-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          sig,
+          itemId: state.modalItem.id,
+          name: state.modalItem.name,
+          emoji: state.modalItem.emoji,
+          isFood: !!state.modalItem.isFood,
+          basePrice: state.modalItem.price,
+          unitPrice,
+          cardSwapped: false,
+          size: state.modalItem.isFood ? null : state.modalSize,
+          ice: state.modalItem.isFood ? null : state.modalIce,
+          sugar: state.modalItem.isFood ? null : state.modalSugar,
+          toppings: selectedToppingsObjs,
+          note,
+          qty: state.modalQty,
+        });
+      }
+
+      const addedName = state.modalItem.name;
+      const addedQty = state.modalQty;
+      closeCustomModal();
+      renderCart();
+      renderMenuGrid();
+      showToast(`Đã xuất ${addedQty}x ${addedName} sang hóa đơn`);
+    }
+
+    // ==================== CART & CHECKOUT MANAGEMENT ====================
+    function toggleMobileCart(open) {
+      const sidebar = document.getElementById('cart-sidebar');
+      const backdrop = document.getElementById('mobile-cart-backdrop');
+      if (open) {
+        sidebar.classList.remove('translate-y-full');
+        backdrop.classList.remove('hidden');
+      } else {
+        sidebar.classList.add('translate-y-full');
+        backdrop.classList.add('hidden');
+      }
+    }
+
+    function toggleCardSwap(uid) {
+      const item = state.cart.find(c => c.uid === uid);
+      if (!item) return;
+      item.cardSwapped = !item.cardSwapped;
+      renderCart();
+      showToast(
+        item.cardSwapped
+          ? `Đã áp dụng Đổi thẻ (-100%) cho ${item.name}`
+          : `Đã hủy Đổi thẻ cho ${item.name}`,
+        'info'
+      );
+    }
+
+    function setPaymentMethod(method) {
+      state.paymentMethod = method;
+      const cashBtn = document.getElementById('pay-method-cash');
+      const qrBtn = document.getElementById('pay-method-qr');
+      const cashBox = document.getElementById('cash-calculator-box');
+      const qrBox = document.getElementById('qr-preview-box');
+
+      if (method === 'cash') {
+        cashBtn.className = 'flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border-2 border-espresso-800 bg-espresso-800 text-white text-xs font-bold transition-all';
+        qrBtn.className = 'flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border-2 border-espresso-200 bg-white text-espresso-700 hover:border-espresso-400 text-xs font-bold transition-all';
+        cashBox.classList.remove('hidden');
+        qrBox.classList.add('hidden');
+      } else {
+        qrBtn.className = 'flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border-2 border-matcha-600 bg-matcha-600 text-white text-xs font-bold transition-all';
+        cashBtn.className = 'flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border-2 border-espresso-200 bg-white text-espresso-700 hover:border-espresso-400 text-xs font-bold transition-all';
+        cashBox.classList.add('hidden');
+        qrBox.classList.remove('hidden');
+      }
+      updateTotalsUI();
+    }
+
+    function handleCashReceivedInput(val) {
+      const num = parseFloat(val);
+      state.cashReceived = isNaN(num) || num < 0 ? 0 : Math.round(num);
+      updateTotalsUI();
+    }
+
+    function setQuickCash(amount) {
+      const { total } = calculateTotals();
+      const target = amount === 'exact' ? total : amount;
+      state.cashReceived = target;
+      document.getElementById('cash-received-input').value = target > 0 ? target : '';
+      updateTotalsUI();
+    }
+
+    function updateCartItemQty(uid, delta) {
+      const idx = state.cart.findIndex(c => c.uid === uid);
+      if (idx === -1) return;
+      state.cart[idx].qty += delta;
+      if (state.cart[idx].qty <= 0) {
+        state.cart.splice(idx, 1);
+      }
+      renderCart();
+      renderMenuGrid();
+    }
+
+    function removeCartItem(uid) {
+      state.cart = state.cart.filter(c => c.uid !== uid);
+      renderCart();
+      renderMenuGrid();
+    }
+
+    function promptClearCart() {
+      document.getElementById('confirm-clear-banner').classList.remove('hidden');
+    }
+
+    function cancelClearCart() {
+      document.getElementById('confirm-clear-banner').classList.add('hidden');
+    }
+
+    function confirmClearCart() {
+      state.cart = [];
+      state.cashReceived = 0;
+      document.getElementById('cash-received-input').value = '';
+      cancelClearCart();
+      renderCart();
+      renderMenuGrid();
+      showToast('Đã làm trống hóa đơn', 'info');
+    }
+
+    function calculateTotals() {
+      const subtotal = state.cart.reduce((sum, item) => sum + getEffectiveItemUnitPrice(item) * item.qty, 0);
+      const total = subtotal;
+      return { subtotal, total };
+    }
+
+    function updateTotalsUI() {
+      const { subtotal, total } = calculateTotals();
+      const totalItems = state.cart.reduce((sum, i) => sum + i.qty, 0);
+
+      document.getElementById('summary-subtotal').textContent = formatVND(subtotal);
+      document.getElementById('summary-total').textContent = formatVND(total);
+
+      const changeEl = document.getElementById('summary-change');
+      if (changeEl) {
+        if (state.cashReceived <= 0 || total === 0) {
+          changeEl.textContent = '0đ';
+          changeEl.className = 'font-extrabold text-matcha-700 text-sm';
+        } else if (state.cashReceived < total) {
+          changeEl.textContent = `Thiếu ${formatVND(total - state.cashReceived)}`;
+          changeEl.className = 'font-extrabold text-rose-600 text-sm';
+        } else {
+          changeEl.textContent = formatVND(state.cashReceived - total);
+          changeEl.className = 'font-extrabold text-matcha-700 text-sm';
+        }
+      }
+
+      document.getElementById('mobile-cart-badge').textContent = totalItems;
+      document.getElementById('mobile-cart-total').textContent = formatVND(total);
+      document.getElementById('mobile-cart-label').textContent = totalItems > 0 ? `${totalItems} món trong hóa đơn` : 'Chưa có món nào';
+      document.getElementById('cart-item-summary-sub').textContent = totalItems > 0 ? `${totalItems} ly / phần đã xuất` : 'Chưa có món nào';
+
+      const checkoutBtn = document.getElementById('checkout-btn');
+      checkoutBtn.disabled = state.cart.length === 0;
+    }
+
+    function renderCart() {
+      const container = document.getElementById('cart-items-container');
+      const clearBtn = document.getElementById('clear-cart-btn');
+
+      if (state.cart.length === 0) {
+        clearBtn.classList.add('hidden');
+        clearBtn.classList.remove('flex');
+        cancelClearCart();
+        container.innerHTML = `
+          <div class="h-full flex flex-col items-center justify-center text-center py-10 px-4">
+            <div class="w-14 h-14 rounded-2xl bg-cream-100 text-espresso-400 flex items-center justify-center mb-3">
+              <i data-lucide="coffee" class="w-7 h-7"></i>
+            </div>
+            <p class="font-bold text-espresso-800 text-sm">Hóa đơn đang trống</p>
+            <p class="text-xs text-espresso-500 mt-1 max-w-[240px]">Chọn món ở thực đơn bên trái để xuất sang hóa đơn mang đi.</p>
+          </div>
+        `;
+        updateTotalsUI();
+        lucide.createIcons({ nodes: [container] });
+        return;
+      }
+
+      clearBtn.classList.remove('hidden');
+      clearBtn.classList.add('flex');
+
+      container.innerHTML = state.cart.map(item => {
+        const optionTags = [];
+        if (!item.isFood) {
+          optionTags.push(`Size ${item.size}`);
+          optionTags.push(item.ice.endsWith('%') ? `${item.ice} đá` : item.ice);
+          optionTags.push(item.sugar.endsWith('%') ? `${item.sugar} đường` : item.sugar);
+        }
+        const toppingNames = item.toppings.map(t => t.name).join(', ');
+        const originalLinePrice = item.unitPrice * item.qty;
+        const effectiveLinePrice = getEffectiveItemUnitPrice(item) * item.qty;
+
+        return `
+          <div class="bg-cream-50/90 border ${item.cardSwapped ? 'border-emerald-400 bg-emerald-50/40' : 'border-espresso-200/80'} rounded-2xl p-3 transition-all">
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-start gap-2.5 min-w-0">
+                <div class="w-10 h-10 rounded-xl bg-white border border-espresso-200/80 flex items-center justify-center overflow-hidden shrink-0 mt-0.5">
+                  <img
+                    src="${getProductImageSrc({ id: item.itemId, name: item.name, emoji: item.emoji })}"
+                    data-fallback-idx="0"
+                    alt="${item.name}"
+                    class="w-full h-full object-cover object-top"
+                    onerror="handleProductImgError(this, '${item.itemId}')"
+                  />
+                  <span style="display:none;" class="text-lg items-center justify-center w-full h-full">${item.emoji}</span>
+                </div>
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <h4 class="font-bold text-espresso-900 text-sm leading-snug">${item.name}</h4>
+                    <button
+                      type="button"
+                      onclick="toggleCardSwap('${item.uid}')"
+                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-all ${
+                        item.cardSwapped
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                          : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                      }"
+                      title="Đổi thẻ: Giảm 100% giá sản phẩm này"
+                    >
+                      <i data-lucide="credit-card" class="w-3 h-3"></i>
+                      <span>${item.cardSwapped ? 'Đã đổi thẻ (-100%)' : 'Đổi thẻ'}</span>
+                    </button>
+                  </div>
+                  ${optionTags.length > 0 ? `
+                    <p class="text-[11px] text-espresso-600 mt-0.5">${optionTags.join(' • ')}</p>
+                  ` : ''}
+                  ${toppingNames ? `
+                    <p class="text-[11px] text-amber-800 font-medium mt-0.5">+ Topping: ${toppingNames}</p>
+                  ` : ''}
+                  ${item.note ? `
+                    <p class="text-[11px] text-matcha-700 italic mt-0.5">Ghi chú: "${item.note}"</p>
+                  ` : ''}
+                </div>
+              </div>
+
+              <button
+                onclick="removeCartItem('${item.uid}')"
+                class="text-espresso-400 hover:text-rose-600 p-1 rounded-lg transition-colors shrink-0"
+                title="Xóa món"
+              >
+                <i data-lucide="x" class="w-4 h-4"></i>
+              </button>
+            </div>
+
+            <div class="mt-2.5 pt-2 border-t border-espresso-200/60 flex items-center justify-between">
+              <div class="flex items-baseline gap-1.5">
+                <span class="font-extrabold text-espresso-900 text-sm">${formatVND(effectiveLinePrice)}</span>
+                ${item.cardSwapped ? `
+                  <span class="text-[11px] text-espresso-400 line-through">${formatVND(originalLinePrice)}</span>
+                ` : ''}
+              </div>
+
+              <div class="flex items-center bg-white border border-espresso-200 rounded-lg p-0.5">
+                <button
+                  onclick="updateCartItemQty('${item.uid}', -1)"
+                  class="w-7 h-7 rounded-md flex items-center justify-center text-espresso-700 hover:bg-espresso-100 active:scale-95 transition-all"
+                >
+                  <i data-lucide="minus" class="w-3.5 h-3.5"></i>
+                </button>
+                <span class="w-7 text-center font-bold text-xs text-espresso-900">${item.qty}</span>
+                <button
+                  onclick="updateCartItemQty('${item.uid}', 1)"
+                  class="w-7 h-7 rounded-md flex items-center justify-center text-espresso-700 hover:bg-espresso-100 active:scale-95 transition-all"
+                >
+                  <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      updateTotalsUI();
+      lucide.createIcons({ nodes: [container] });
+    }
+
+    // ==================== CHECKOUT & RECEIPT ====================
+    function generateOrderCode() {
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+      const prefix = `CF-${dateStr}-`;
+      let maxSeq = 0;
+      state.ordersHistory.forEach(o => {
+        if (o.id && o.id.startsWith(prefix)) {
+          const n = parseInt(o.id.slice(prefix.length), 10);
+          if (!isNaN(n) && n > maxSeq) maxSeq = n;
+        }
+      });
+      return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+    }
+
+    async function processCheckout() {
+      if (state.cart.length === 0) {
+        showToast('Vui lòng xuất ít nhất 1 món sang hóa đơn trước khi thanh toán', 'error');
+        return;
+      }
+
+      const { subtotal, total } = calculateTotals();
+      if (state.paymentMethod === 'cash' && state.cashReceived > 0 && state.cashReceived < total) {
+        showToast('Số tiền khách đưa đang nhỏ hơn tổng thanh toán!', 'error');
+        return;
+      }
+
+      const cashGiven = state.paymentMethod === 'cash'
+        ? (state.cashReceived > 0 ? state.cashReceived : total)
+        : 0;
+      const changeReturned = state.paymentMethod === 'cash'
+        ? Math.max(0, cashGiven - total)
+        : 0;
+
+      const now = new Date();
+      const order = {
+        id: generateOrderCode(),
+        createdAt: now.toISOString(),
+        formattedTime: now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' - ' + now.toLocaleDateString('vi-VN'),
+        dateKey: getLocalDateKey(now),
+        orderType: 'takeaway',
+        locationLabel: 'Mang đi',
+        paymentMethod: state.paymentMethod,
+        paymentLabel: state.paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản / QR',
+        cashGiven,
+        changeReturned,
+        items: JSON.parse(JSON.stringify(state.cart)),
+        subtotal,
+        total,
+      };
+
+      const checkoutBtnEl = document.getElementById('checkout-btn');
+      checkoutBtnEl.disabled = true;
+      state.ordersHistory.unshift(order);
+      const savedOk = await dbInsertOrder(order);
+      if (!savedOk) {
+        state.ordersHistory = state.ordersHistory.filter(o => o.id !== order.id);
+        checkoutBtnEl.disabled = state.cart.length === 0;
+        return;
+      }
+      updateHistoryStats();
+      updateIngredientsStats();
+
+      openReceiptModal(order);
+
+      state.cart = [];
+      state.cashReceived = 0;
+      document.getElementById('cash-received-input').value = '';
+      toggleMobileCart(false);
+      renderCart();
+      renderMenuGrid();
+    }
+
+    function openReceiptModal(order) {
+      state.currentReceiptOrder = order;
+      const container = document.getElementById('receipt-printable');
+      const itemsHtml = order.items.map((item, idx) => {
+        const details = [];
+        if (!item.isFood) {
+          details.push(`Size ${item.size}`);
+          details.push(item.ice.endsWith('%') ? `${item.ice} đá` : item.ice);
+          details.push(item.sugar.endsWith('%') ? `${item.sugar} đường` : item.sugar);
+        }
+        if (item.toppings && item.toppings.length > 0) {
+          details.push('Topping: ' + item.toppings.map(t => t.name).join(', '));
+        }
+        if (item.cardSwapped) {
+          details.push('Đổi thẻ (-100%)');
+        }
+        if (item.note) {
+          details.push(`Ghi chú: ${item.note}`);
+        }
+
+        const effectiveLinePrice = getEffectiveItemUnitPrice(item) * item.qty;
+
+        return `
+          <div class="py-2 border-b border-dashed border-gray-300">
+            <div class="flex justify-between font-bold text-gray-900">
+              <span>${idx + 1}. ${item.name} x${item.qty}${item.cardSwapped ? ' [ĐỔI THẺ]' : ''}</span>
+              <span>${formatVND(effectiveLinePrice)}</span>
+            </div>
+            ${details.length > 0 ? `<div class="text-[11px] text-gray-600 pl-3 mt-0.5">${details.join(' | ')}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+
+      container.innerHTML = `
+        <div class="text-center border-b-2 border-dashed border-gray-400 pb-3 mb-3">
+          <div class="text-base font-extrabold uppercase tracking-wide">O'SIX COFFEE</div>
+          <div class="text-[11px] text-gray-600">174 đường 2/9, An Phước 2, Bến Cát, TP.HCM</div>
+          <div class="text-[11px] text-gray-600">Hotline: 0348 557 077</div>
+          <div class="mt-2 font-bold text-sm uppercase border-y border-gray-300 py-1">PHIẾU THANH TOÁN (MANG ĐI)</div>
+        </div>
+
+        <div class="space-y-1 text-[11px] mb-3">
+          <div class="flex justify-between">
+            <span class="text-gray-600">Mã đơn:</span>
+            <span class="font-bold">${order.id}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-600">Thời gian:</span>
+            <span>${order.formattedTime}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-600">Hình thức:</span>
+            <span class="font-bold">Mang đi</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-600">Thanh toán:</span>
+            <span class="font-bold">${order.paymentLabel}</span>
+          </div>
+        </div>
+
+        <div class="border-t border-gray-400 pt-1 mb-3">
+          ${itemsHtml}
+        </div>
+
+        <div class="space-y-1 text-xs pt-1">
+          <div class="flex justify-between">
+            <span class="text-gray-600">Tạm tính:</span>
+            <span>${formatVND(order.subtotal)}</span>
+          </div>
+          <div class="flex justify-between text-sm font-extrabold border-t-2 border-gray-800 pt-2 mt-2">
+            <span>TỔNG CỘNG:</span>
+            <span>${formatVND(order.total)}</span>
+          </div>
+          ${order.paymentMethod === 'cash' && order.cashGiven ? `
+            <div class="flex justify-between text-[11px] text-gray-600 pt-1">
+              <span>Tiền khách đưa:</span>
+              <span>${formatVND(order.cashGiven)}</span>
+            </div>
+            <div class="flex justify-between text-[11px] font-bold text-gray-800">
+              <span>Tiền thừa trả khách:</span>
+              <span>${formatVND(order.changeReturned || 0)}</span>
+            </div>
+          ` : ''}
+        </div>
+
+        ${order.paymentMethod === 'qr' ? `
+          <div class="mt-4 p-3 border border-dashed border-gray-400 rounded-xl text-center bg-gray-50">
+            <div class="text-[11px] font-bold uppercase mb-1">Quét mã QR để thanh toán</div>
+            <div class="w-36 h-36 mx-auto bg-white border border-gray-300 rounded-lg flex flex-col items-center justify-center p-1.5 overflow-hidden relative">
+              <img 
+                id="receipt-qr-img"
+                src="${getSavedQrDataUrl() || 'qrm.jpg'}" 
+                alt="Mã QR thanh toán" 
+                onload="extractQrDataUrl(this)"
+                class="w-full h-full object-contain"
+              />
+            </div>
+             <p class="mt-1.5">Ngân Hàng Quân Đội</p>
+                <p>003.555.85.799</p>
+                <p>TRẦN DANH NAM</p>
+            
+            <div class="mt-2 no-print">
+              <button
+                type="button"
+                onclick="triggerQrImageUpload()"
+                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-gray-300 bg-white hover:bg-gray-100 text-[10px] font-sans font-semibold text-gray-700 transition-colors cursor-pointer"
+              >
+                <i data-lucide="qr-code" class="w-3 h-3"></i>
+                <span>${getSavedQrDataUrl() ? 'Đổi ảnh QR' : 'Nạp ảnh QR (nếu trống)'}</span>
+              </button>
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="text-center mt-5 pt-3 border-t border-dashed border-gray-300 text-[11px] text-gray-600">
+          <p class="font-semibold text-gray-800">Cảm ơn quý khách & Hẹn gặp lại!</p>
+        </div>
+      `;
+
+      const modal = document.getElementById('receipt-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      lucide.createIcons({ nodes: [container] });
+    }
+
+    function closeReceiptModal() {
+      const modal = document.getElementById('receipt-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      state.currentReceiptOrder = null;
+    }
+
+    // ==================== SAVE RECEIPT AS JPG TO G:\My Drive\caphe ====================
+    const TARGET_RECEIPT_FOLDER_PATH = 'G:\\My Drive\\caphe';
+    const FOLDER_HANDLE_DB_NAME = 'osix_pos_fs_handles_db';
+    const FOLDER_HANDLE_STORE_NAME = 'handles';
+    const FOLDER_HANDLE_KEY = 'receipt_caphe_dir';
+
+    function openFolderHandleDB() {
+      return new Promise((resolve, reject) => {
+        if (!window.indexedDB) {
+          reject(new Error('Trình duyệt không hỗ trợ IndexedDB'));
+          return;
+        }
+        const req = indexedDB.open(FOLDER_HANDLE_DB_NAME, 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(FOLDER_HANDLE_STORE_NAME)) {
+            db.createObjectStore(FOLDER_HANDLE_STORE_NAME);
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function getSavedCapheDirHandle() {
+      try {
+        const db = await openFolderHandleDB();
+        return await new Promise((resolve, reject) => {
+          const tx = db.transaction(FOLDER_HANDLE_STORE_NAME, 'readonly');
+          const store = tx.objectStore(FOLDER_HANDLE_STORE_NAME);
+          const req = store.get(FOLDER_HANDLE_KEY);
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => reject(req.error);
+        });
+      } catch (_) {
+        return null;
+      }
+    }
+
+    async function saveCapheDirHandle(dirHandle) {
+      try {
+        const db = await openFolderHandleDB();
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(FOLDER_HANDLE_STORE_NAME, 'readwrite');
+          const store = tx.objectStore(FOLDER_HANDLE_STORE_NAME);
+          const req = store.put(dirHandle, FOLDER_HANDLE_KEY);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      } catch (_) {}
+    }
+
+    async function selectCapheFolderHandle() {
+      if (typeof window.showDirectoryPicker !== 'function') return null;
+      showToast(`Vui lòng chọn thư mục ${TARGET_RECEIPT_FOLDER_PATH}`, 'info');
+      const dirHandle = await window.showDirectoryPicker({
+        id: 'osix-caphe-receipts',
+        mode: 'readwrite'
+      });
+      await saveCapheDirHandle(dirHandle);
+      return dirHandle;
+    }
+
+    const QR_IMAGE_STORAGE_KEY = 'osix_custom_qr_image_v1';
+    let cachedQrDataUrl = null;
+
+    function getSavedQrDataUrl() {
+      if (cachedQrDataUrl) return cachedQrDataUrl;
+      try {
+        const saved = localStorage.getItem(QR_IMAGE_STORAGE_KEY);
+        if (saved && saved.startsWith('data:image/')) {
+          cachedQrDataUrl = saved;
+          return saved;
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    function saveQrDataUrlToCache(dataUrl) {
+      if (!dataUrl || !dataUrl.startsWith('data:image/')) return;
+      cachedQrDataUrl = dataUrl;
+      try {
+        localStorage.setItem(QR_IMAGE_STORAGE_KEY, dataUrl);
+      } catch (_) {}
+    }
+
+    // Đọc ảnh QR từ DOM đang hiển thị hoặc tải lại từ qrm.jpg / fetch
+    async function extractQrDataUrl(imgEl) {
+      const cached = getSavedQrDataUrl();
+      if (cached) return cached;
+
+      const tryCanvasFromImg = (targetImg) => {
+        try {
+          if (!targetImg || !targetImg.naturalWidth || !targetImg.naturalHeight) return null;
+          const c = document.createElement('canvas');
+          c.width = targetImg.naturalWidth;
+          c.height = targetImg.naturalHeight;
+          const ctx = c.getContext('2d');
+          ctx.drawImage(targetImg, 0, 0);
+          const url = c.toDataURL('image/png');
+          if (url && url.startsWith('data:image/')) {
+            saveQrDataUrlToCache(url);
+            return url;
+          }
+        } catch (_) {}
+        return null;
+      };
+
+      // Thử lấy trực tiếp từ thẻ img trên trang
+      if (imgEl && imgEl.complete && imgEl.naturalWidth > 0) {
+        const direct = tryCanvasFromImg(imgEl);
+        if (direct) return direct;
+      }
+
+      // Thử đọc qua fetch -> FileReader (hoạt động trên http/https hoặc một số trình duyệt)
+      const srcUrl = (imgEl && imgEl.getAttribute('src')) || 'qrm.jpg';
+      try {
+        const resp = await fetch(srcUrl);
+        if (resp && resp.ok) {
+          const blob = await resp.blob();
+          const dataUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+          if (dataUrl && typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+            saveQrDataUrlToCache(dataUrl);
+            return dataUrl;
+          }
+        }
+      } catch (_) {}
+
+      return null;
+    }
+
+    function loadImageFromDataUrl(dataUrl) {
+      return new Promise((resolve) => {
+        if (!dataUrl) return resolve(null);
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = () => resolve(null);
+        im.src = dataUrl;
+      });
+    }
+
+    // Vẽ hóa đơn bằng Canvas 2D có chèn đầy đủ mã QR thật (nếu có) để luôn lưu thành công cả khi mở file://
+    async function renderReceiptFallbackCanvas(order, qrDataUrl = null) {
+      const width = 680;
+      const pad = 36;
+      const lineH = 30;
+      const lines = [];
+
+      const addLine = (text, opts = {}) => lines.push({ text, ...opts });
+      const addRow = (left, right, opts = {}) => lines.push({ left, right, isRow: true, ...opts });
+      const addDivider = (dashed = true) => lines.push({ isDivider: true, dashed });
+
+      addLine("O'SIX COFFEE", { bold: true, size: 100 , align: 'center' });
+      addLine("174 đường 2/9, An Phước 2, Bến Cát, TP.HCM", { size: 17, align: 'center', color: '#4b5563' });
+      addLine("Hotline: 0348 557 077", { size: 17, align: 'center', color: '#4b5563' });
+      addDivider(false);
+      addLine("PHIẾU THANH TOÁN (MANG ĐI)", { bold: true, size: 20, align: 'center' });
+      addDivider(false);
+
+      addRow("Mã đơn:", order.id || '', { boldRight: true });
+      addRow("Thời gian:", order.formattedTime || '');
+      addRow("Hình thức:", "Mang đi", { boldRight: true });
+      addRow("Thanh toán:", order.paymentLabel || '', { boldRight: true });
+      addDivider(true);
+
+      (order.items || []).forEach((item, idx) => {
+        const effectiveLinePrice = getEffectiveItemUnitPrice(item) * item.qty;
+        addRow(
+          `${idx + 1}. ${item.name} x${item.qty}${item.cardSwapped ? ' [ĐỔI THẺ]' : ''}`,
+          formatVND(effectiveLinePrice),
+          { boldLeft: true, boldRight: true }
+        );
+        const details = [];
+        if (!item.isFood) {
+          details.push(`Size ${item.size}`);
+          details.push(item.ice && item.ice.endsWith('%') ? `${item.ice} đá` : item.ice);
+          details.push(item.sugar && item.sugar.endsWith('%') ? `${item.sugar} đường` : item.sugar);
+        }
+        if (item.toppings && item.toppings.length > 0) {
+          details.push('Topping: ' + item.toppings.map(t => t.name).join(', '));
+        }
+        if (item.cardSwapped) details.push('Đổi thẻ (-100%)');
+        if (item.note) details.push(`Ghi chú: ${item.note}`);
+        if (details.length > 0) {
+          addLine("   " + details.join(' | '), { size: 16, color: '#4b5563' });
+        }
+      });
+
+      addDivider(true);
+      addRow("Tạm tính:", formatVND(order.subtotal || 0));
+      addDivider(false);
+      addRow("TỔNG CỘNG:", formatVND(order.total || 0), { boldLeft: true, boldRight: true, size: 24 });
+
+      if (order.paymentMethod === 'cash' && order.cashGiven) {
+        addRow("Tiền khách đưa:", formatVND(order.cashGiven), { size: 17, color: '#4b5563' });
+        addRow("Tiền thừa trả khách:", formatVND(order.changeReturned || 0), { boldRight: true, size: 17 });
+      }
+
+      const qrImg = order.paymentMethod === 'qr' ? await loadImageFromDataUrl(qrDataUrl || getSavedQrDataUrl()) : null;
+      const qrBlockHeight = order.paymentMethod === 'qr' ? 290 : 0;
+
+      addDivider(true);
+      addLine("Cảm ơn quý khách & Hẹn gặp lại!", { bold: true, align: 'center', size: 18 });
+
+      const totalHeight = pad * 2 + lines.length * lineH + qrBlockHeight + 24;
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = totalHeight;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, totalHeight);
+
+      let y = pad + 22;
+      let qrInserted = false;
+
+      lines.forEach(item => {
+        if (!qrInserted && order.paymentMethod === 'qr' && item.text && item.text.startsWith("Cảm ơn quý khách")) {
+          qrInserted = true;
+          const boxW = width - pad * 2;
+          const boxH = 265;
+          const boxX = pad;
+          const boxY = y - 10;
+
+          ctx.save();
+          ctx.strokeStyle = '#9ca3af';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([6, 5]);
+          ctx.strokeRect(boxX, boxY, boxW, boxH);
+          ctx.restore();
+
+          ctx.font = 'bold 16px monospace';
+          ctx.fillStyle = '#111827';
+          ctx.textAlign = 'center';
+          ctx.fillText('QUÉT MÃ QR ĐỂ THANH TOÁN', width / 2, boxY + 26);
+
+          const qrSize = 140;
+          const qrX = (width - qrSize) / 2;
+          const qrY = boxY + 38;
+
+          if (qrImg) {
+            ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+          } else {
+            ctx.strokeStyle = '#d1d5db';
+            ctx.strokeRect(qrX, qrY, qrSize, qrSize);
+            ctx.font = 'bold 15px monospace';
+            ctx.fillStyle = '#374151';
+            ctx.fillText('MÃ QR', width / 2, qrY + 65);
+            ctx.font = '13px monospace';
+            ctx.fillText('MB Bank', width / 2, qrY + 88);
+          }
+
+          ctx.font = '16px monospace';
+          ctx.fillStyle = '#111827';
+          ctx.fillText('Ngân Hàng Quân Đội', width / 2, qrY + qrSize + 24);
+          ctx.font = 'bold 17px monospace';
+          ctx.fillText('003.555.85.799', width / 2, qrY + qrSize + 46);
+          ctx.font = '15px monospace';
+          ctx.fillStyle = '#4b5563';
+          ctx.fillText(`O'SIX COFFEE • ${formatVND(order.total || 0)}`, width / 2, qrY + qrSize + 68);
+
+          y += boxH + 14;
+        }
+
+        if (item.isDivider) {
+          ctx.save();
+          ctx.strokeStyle = '#9ca3af';
+          ctx.lineWidth = 1.5;
+          if (item.dashed) ctx.setLineDash([6, 5]);
+          ctx.beginPath();
+          ctx.moveTo(pad, y - 10);
+          ctx.lineTo(width - pad, y - 10);
+          ctx.stroke();
+          ctx.restore();
+          y += lineH * 0.7;
+          return;
+        }
+
+        const fontSize = item.size || 19;
+        ctx.fillStyle = item.color || '#111827';
+
+        if (item.isRow) {
+          ctx.font = `${item.boldLeft ? 'bold ' : ''}${fontSize}px monospace`;
+          ctx.textAlign = 'left';
+          ctx.fillText(item.left, pad, y);
+
+          ctx.font = `${item.boldRight ? 'bold ' : ''}${fontSize}px monospace`;
+          ctx.textAlign = 'right';
+          ctx.fillText(item.right, width - pad, y);
+        } else {
+          ctx.font = `${item.bold ? 'bold ' : ''}${fontSize}px monospace`;
+          ctx.textAlign = item.align || 'left';
+          const x = item.align === 'center' ? width / 2 : pad;
+          ctx.fillText(item.text, x, y);
+        }
+        y += lineH;
+      });
+
+      return canvas;
+    }
+
+    function canvasToJpegBlob(canvas) {
+      return new Promise((resolve, reject) => {
+        try {
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+              const byteString = atob(dataUrl.split(',')[1]);
+              const ab = new ArrayBuffer(byteString.length);
+              const ia = new Uint8Array(ab);
+              for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+              }
+              resolve(new Blob([ab], { type: 'image/jpeg' }));
+            }
+          }, 'image/jpeg', 0.95);
+        } catch (err) {
+          reject(err);
+        }
+      });
+    }
+
+    function triggerQrImageUpload() {
+      let input = document.getElementById('hidden-qr-image-input');
+      if (!input) {
+        input = document.createElement('input');
+        input.type = 'file';
+        input.id = 'hidden-qr-image-input';
+        input.accept = 'image/*';
+        input.className = 'hidden';
+        input.onchange = handleQrImageSelected;
+        document.body.appendChild(input);
+      }
+      input.value = '';
+      input.click();
+    }
+
+    function handleQrImageSelected(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target && ev.target.result;
+        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+          saveQrDataUrlToCache(dataUrl);
+          if (state.currentReceiptOrder) {
+            openReceiptModal(state.currentReceiptOrder);
+          }
+          showToast('Đã lưu mã QR thanh toán và sẽ xuất kèm trên hóa đơn JPG!');
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function saveReceiptAsJPG(forceChooseFolder = false) {
+      const receiptEl = document.getElementById('receipt-printable');
+      const btn = document.getElementById('save-receipt-jpg-btn');
+      if (!receiptEl) return;
+
+      const originalBtnHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin shrink-0"></i><span>Đang lưu...</span>`;
+      lucide.createIcons({ nodes: [btn] });
+
+      const clone = receiptEl.cloneNode(true);
+      clone.style.position = 'fixed';
+      clone.style.left = '-9999px';
+      clone.style.top = '0';
+      clone.style.width = `${Math.max(receiptEl.offsetWidth || 380, 380)}px`;
+      clone.style.maxHeight = 'none';
+      clone.style.height = 'auto';
+      clone.style.overflow = 'visible';
+      clone.style.backgroundColor = '#ffffff';
+      clone.style.zIndex = '-1';
+      document.body.appendChild(clone);
+
+      let resolvedQrDataUrl = getSavedQrDataUrl();
+
+      try {
+        const origImages = Array.from(receiptEl.querySelectorAll('img'));
+        const cloneImages = Array.from(clone.querySelectorAll('img'));
+
+        for (let i = 0; i < cloneImages.length; i++) {
+          const cloneImg = cloneImages[i];
+          const origImg = origImages[i] || cloneImg;
+          const isQrImg = (cloneImg.getAttribute('alt') || '').toLowerCase().includes('qr') ||
+            (cloneImg.getAttribute('src') || '').includes('qrm.jpg');
+
+          const extractedUrl = await extractQrDataUrl(origImg);
+          if (extractedUrl) {
+            cloneImg.src = extractedUrl;
+            if (isQrImg) resolvedQrDataUrl = extractedUrl;
+            await new Promise((res) => {
+              if (cloneImg.complete) return res();
+              cloneImg.onload = res;
+              cloneImg.onerror = res;
+            });
+          } else if (isQrImg) {
+            // Không thay bằng placeholder nếu có thể vẽ QR bằng canvas fallback bên dưới;
+            // nếu chạy html2canvas thì giữ khung sạch không làm bẩn canvas
+            const placeholder = document.createElement('div');
+            placeholder.className = 'w-full h-full flex flex-col items-center justify-center text-[10px] font-bold text-gray-700 bg-gray-100 rounded p-1 text-center';
+            placeholder.innerHTML = '<span>MÃ QR</span><span class="text-[9px] font-normal">MB Bank</span>';
+            cloneImg.replaceWith(placeholder);
+          }
+        }
+
+        let jpgBlob = null;
+
+        if (typeof html2canvas === 'function') {
+          try {
+            const canvas = await html2canvas(clone, {
+              scale: 2,
+              backgroundColor: '#ffffff',
+              useCORS: false,
+              allowTaint: false,
+              logging: false
+            });
+            jpgBlob = await canvasToJpegBlob(canvas);
+          } catch (renderErr) {
+            console.warn('html2canvas fallback sang Canvas 2D:', renderErr);
+          }
+        }
+
+        // Nếu html2canvas lỗi hoặc không có QR dataUrl mà đơn hàng là chuyển khoản QR, thử vẽ Canvas 2D kèm QR (nếu đã lưu)
+        if (!jpgBlob && state.currentReceiptOrder) {
+          const fallbackCanvas = await renderReceiptFallbackCanvas(state.currentReceiptOrder, resolvedQrDataUrl);
+          jpgBlob = await canvasToJpegBlob(fallbackCanvas);
+        }
+
+        if (!jpgBlob) {
+          throw new Error('Không thể khởi tạo dữ liệu ảnh JPG');
+        }
+
+        const orderCode = state.currentReceiptOrder?.id || ('HD-' + Date.now());
+        const filename = `Hoa-don-${orderCode}.jpg`;
+
+        let savedDirectlyToFolder = false;
+        if (typeof window.showDirectoryPicker === 'function') {
+          try {
+            let dirHandle = forceChooseFolder ? null : await getSavedCapheDirHandle();
+
+            if (dirHandle) {
+              let perm = await dirHandle.queryPermission({ mode: 'readwrite' });
+              if (perm !== 'granted') {
+                perm = await dirHandle.requestPermission({ mode: 'readwrite' });
+              }
+              if (perm !== 'granted') {
+                dirHandle = null;
+              }
+            }
+
+            if (!dirHandle) {
+              dirHandle = await selectCapheFolderHandle();
+            }
+
+            if (dirHandle) {
+              const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+              const writable = await fileHandle.createWritable();
+              await writable.write(jpgBlob);
+              await writable.close();
+              savedDirectlyToFolder = true;
+              showToast(`Đã lưu ${filename} vào ${TARGET_RECEIPT_FOLDER_PATH}`);
+            }
+          } catch (fsErr) {
+            if (fsErr && fsErr.name === 'AbortError') {
+              showToast('Đã hủy chọn thư mục lưu ảnh', 'info');
+              return;
+            }
+            console.warn('Trình duyệt hạn chế ghi thư mục trực tiếp, chuyển sang tải tệp:', fsErr);
+          }
+        }
+
+        if (!savedDirectlyToFolder) {
+          const blobUrl = URL.createObjectURL(jpgBlob);
+          const downloadLink = document.createElement('a');
+          downloadLink.style.display = 'none';
+          downloadLink.href = blobUrl;
+          downloadLink.setAttribute('download', filename);
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
+          showToast(`Đã tải ${filename} về thư mục Downloads`);
+        }
+      } catch (err) {
+        console.error('Lỗi lưu ảnh JPG hóa đơn:', err);
+        showToast('Lỗi xuất ảnh: ' + (err?.message || 'Vui lòng thử lại!'), 'error');
+      } finally {
+        if (clone.parentNode) {
+          clone.parentNode.removeChild(clone);
+        }
+        btn.disabled = false;
+        btn.innerHTML = originalBtnHtml;
+        lucide.createIcons({ nodes: [btn] });
+      }
+    }
+
+    // ==================== ORDER HISTORY, DAILY STATS & DATE FILTER ====================
+    function getFilteredOrders() {
+      if (!state.historyFilterDate) {
+        return state.ordersHistory;
+      }
+      return state.ordersHistory.filter(o => o.dateKey === state.historyFilterDate);
+    }
+
+    function syncHistoryDateFilterUI() {
+      const dateInput = document.getElementById('history-date-filter');
+      const todayBtn = document.getElementById('history-filter-today-btn');
+      const allBtn = document.getElementById('history-filter-all-btn');
+      if (!dateInput || !todayBtn || !allBtn) return;
+
+      const todayKey = getLocalDateKey();
+      dateInput.value = state.historyFilterDate;
+
+      const activeBtnClass = 'px-2.5 py-1.5 rounded-xl bg-espresso-900 text-white text-xs font-semibold transition-colors';
+      const inactiveBtnClass = 'px-2.5 py-1.5 rounded-xl border border-espresso-200 bg-white hover:bg-espresso-100 text-espresso-700 text-xs font-semibold transition-colors';
+
+      if (!state.historyFilterDate) {
+        allBtn.className = activeBtnClass;
+        todayBtn.className = inactiveBtnClass;
+      } else if (state.historyFilterDate === todayKey) {
+        todayBtn.className = activeBtnClass;
+        allBtn.className = inactiveBtnClass;
+      } else {
+        todayBtn.className = inactiveBtnClass;
+        allBtn.className = inactiveBtnClass;
+      }
+
+      const exportFilteredLabel = document.getElementById('export-hist-filtered-label');
+      if (exportFilteredLabel) {
+        exportFilteredLabel.textContent = state.historyFilterDate
+          ? `Xuất CSV (${formatDateKeyVN(state.historyFilterDate)})`
+          : 'Xuất CSV (Đang lọc)';
+      }
+    }
+
+    function handleHistoryDateFilter(dateVal) {
+      state.historyFilterDate = dateVal || '';
+      state.selectedOrderIds = [];
+      syncHistoryDateFilterUI();
+      renderHistoryList();
+    }
+
+    function setHistoryDateFilterToday() {
+      state.historyFilterDate = getLocalDateKey();
+      state.selectedOrderIds = [];
+      syncHistoryDateFilterUI();
+      renderHistoryList();
+    }
+
+    function clearHistoryDateFilter() {
+      state.historyFilterDate = '';
+      state.selectedOrderIds = [];
+      syncHistoryDateFilterUI();
+      renderHistoryList();
+    }
+
+    function updateHistoryStats() {
+      const todayKey = getLocalDateKey();
+      const todayOrders = state.ordersHistory.filter(o => o.dateKey === todayKey);
+
+      const todayRevenue = todayOrders.reduce((s, o) => s + o.total, 0);
+      const todayCash = todayOrders.filter(o => o.paymentMethod === 'cash').reduce((s, o) => s + o.total, 0);
+      const todayQr = todayOrders.filter(o => o.paymentMethod === 'qr').reduce((s, o) => s + o.total, 0);
+
+      document.getElementById('header-order-count').textContent = state.ordersHistory.length;
+      document.getElementById('header-today-revenue').textContent = formatVND(todayRevenue);
+
+      document.getElementById('stat-today-revenue').textContent = formatVND(todayRevenue);
+      document.getElementById('stat-today-orders').textContent = `${todayOrders.length} đơn`;
+      document.getElementById('stat-today-cash').textContent = formatVND(todayCash);
+      document.getElementById('stat-today-qr').textContent = formatVND(todayQr);
+    }
+
+    function viewOrderReceiptById(orderId) {
+      const order = state.ordersHistory.find(o => o.id === orderId);
+      if (order) {
+        openReceiptModal(order);
+      }
+    }
+
+    function toggleOrderSelection(orderId, isChecked) {
+      if (isChecked) {
+        if (!state.selectedOrderIds.includes(orderId)) {
+          state.selectedOrderIds.push(orderId);
+        }
+      } else {
+        state.selectedOrderIds = state.selectedOrderIds.filter(id => id !== orderId);
+      }
+      renderHistoryList();
+    }
+
+    function toggleSelectAllOrders(isChecked) {
+      const visibleOrders = getFilteredOrders();
+      if (isChecked) {
+        state.selectedOrderIds = visibleOrders.map(o => o.id);
+      } else {
+        state.selectedOrderIds = [];
+      }
+      renderHistoryList();
+    }
+
+    function clearOrderSelections() {
+      state.selectedOrderIds = [];
+      renderHistoryList();
+    }
+
+    async function deleteOrderById(orderId) {
+      if (!confirm(`Bạn có chắc chắn muốn xóa đơn hàng ${orderId} không?`)) {
+        return;
+      }
+      const backup = state.ordersHistory;
+      state.ordersHistory = state.ordersHistory.filter(o => o.id !== orderId);
+      state.selectedOrderIds = state.selectedOrderIds.filter(id => id !== orderId);
+      if (!(await dbDeleteOrders([orderId]))) {
+        state.ordersHistory = backup;
+        renderHistoryList();
+        return;
+      }
+      updateHistoryStats();
+      updateIngredientsStats();
+      renderHistoryList();
+      showToast(`Đã xóa đơn hàng ${orderId}`, 'info');
+    }
+
+    async function deleteSelectedOrders() {
+      const count = state.selectedOrderIds.length;
+      if (count === 0) return;
+
+      if (!confirm(`Bạn có chắc chắn muốn xóa ${count} đơn hàng đã chọn không?`)) {
+        return;
+      }
+
+      const selectedSet = new Set(state.selectedOrderIds);
+      const backup = state.ordersHistory;
+      const idsToDelete = Array.from(selectedSet);
+      state.ordersHistory = state.ordersHistory.filter(o => !selectedSet.has(o.id));
+      state.selectedOrderIds = [];
+      if (!(await dbDeleteOrders(idsToDelete))) {
+        state.ordersHistory = backup;
+        renderHistoryList();
+        return;
+      }
+      updateHistoryStats();
+      updateIngredientsStats();
+      renderHistoryList();
+      showToast(`Đã xóa ${count} đơn hàng đã chọn`, 'info');
+    }
+
+    function updateBulkToolbarUI(visibleOrders) {
+      const toolbar = document.getElementById('history-bulk-toolbar');
+      const selectAllCheckbox = document.getElementById('history-select-all-checkbox');
+      const bulkActions = document.getElementById('history-bulk-actions');
+      const selectedCountEl = document.getElementById('history-selected-count');
+
+      if (!toolbar) return;
+
+      if (visibleOrders.length === 0) {
+        toolbar.classList.add('hidden');
+        return;
+      }
+
+      toolbar.classList.remove('hidden');
+
+      const validVisibleIds = new Set(visibleOrders.map(o => o.id));
+      state.selectedOrderIds = state.selectedOrderIds.filter(id => validVisibleIds.has(id));
+
+      const selectedCount = state.selectedOrderIds.length;
+      const totalCount = visibleOrders.length;
+
+      selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalCount;
+      selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalCount;
+
+      if (selectedCount > 0) {
+        bulkActions.classList.remove('hidden');
+        bulkActions.classList.add('flex');
+        selectedCountEl.textContent = selectedCount;
+      } else {
+        bulkActions.classList.add('hidden');
+        bulkActions.classList.remove('flex');
+      }
+    }
+
+    function renderHistoryList() {
+      const container = document.getElementById('history-list-container');
+      syncHistoryDateFilterUI();
+
+      const filteredOrders = getFilteredOrders();
+      updateBulkToolbarUI(filteredOrders);
+
+      // Tính tổng số món đã bán được & tổng doanh thu của danh sách đơn hàng đang hiển thị
+      const totalItemsSold = filteredOrders.reduce((orderSum, order) => {
+        const itemsInOrder = Array.isArray(order.items)
+          ? order.items.reduce((itemSum, item) => itemSum + (Number(item.qty) || 0), 0)
+          : 0;
+        return orderSum + itemsInOrder;
+      }, 0);
+
+      const filteredRevenue = filteredOrders.reduce((sum, order) => sum + (Number(order.total) || 0), 0);
+
+      const matchingIngredients = state.historyFilterDate
+        ? state.ingredientsHistory.filter(i => i.dateKey === state.historyFilterDate)
+        : state.ingredientsHistory;
+      const filteredIngredientCost = matchingIngredients.reduce((sum, i) => sum + (Number(i.totalCost) || 0), 0);
+      const netRevenueAfterIngredients = filteredRevenue - filteredIngredientCost;
+
+      const totalSoldEl = document.getElementById('history-total-items-sold');
+      const filteredRevEl = document.getElementById('history-filtered-revenue');
+      const netRevEl = document.getElementById('history-net-revenue');
+      const summaryEl = document.getElementById('history-filter-summary');
+
+      if (totalSoldEl) {
+        totalSoldEl.textContent = `${totalItemsSold} món`;
+      }
+      if (filteredRevEl) {
+        filteredRevEl.textContent = formatVND(filteredRevenue);
+      }
+      if (netRevEl) {
+        netRevEl.textContent = (netRevenueAfterIngredients < 0 ? '-' : '') + formatVND(Math.abs(netRevenueAfterIngredients));
+        netRevEl.className = `text-sm font-extrabold ${netRevenueAfterIngredients < 0 ? 'text-rose-600' : 'text-emerald-900'}`;
+      }
+      if (summaryEl) {
+        summaryEl.textContent = state.historyFilterDate
+          ? `Ngày ${formatDateKeyVN(state.historyFilterDate)}: ${filteredOrders.length} đơn hàng`
+          : `Hiển thị ${filteredOrders.length} đơn hàng`;
+      }
+
+      if (state.ordersHistory.length === 0) {
+        container.innerHTML = `
+          <div class="py-16 px-4 text-center">
+            <div class="w-16 h-16 rounded-full bg-cream-100 text-espresso-400 flex items-center justify-center mx-auto mb-3">
+              <i data-lucide="receipt" class="w-8 h-8"></i>
+            </div>
+            <h3 class="font-bold text-espresso-900 text-base">Chưa có đơn hàng nào</h3>
+            <p class="text-xs text-espresso-500 mt-1">Các đơn hàng sau khi bấm "Xác nhận & In hóa đơn" sẽ xuất hiện tại đây.</p>
+          </div>
+        `;
+        lucide.createIcons({ nodes: [container] });
+        return;
+      }
+
+      if (filteredOrders.length === 0) {
+        container.innerHTML = `
+          <div class="py-14 px-4 text-center">
+            <div class="w-14 h-14 rounded-full bg-cream-100 text-espresso-400 flex items-center justify-center mx-auto mb-3">
+              <i data-lucide="calendar-x" class="w-7 h-7"></i>
+            </div>
+            <h3 class="font-bold text-espresso-900 text-sm">Không có đơn hàng nào trong ngày ${formatDateKeyVN(state.historyFilterDate)}</h3>
+            <button
+              type="button"
+              onclick="clearHistoryDateFilter()"
+              class="mt-3 px-3.5 py-1.5 rounded-xl bg-espresso-800 hover:bg-espresso-900 text-white text-xs font-semibold transition-colors"
+            >
+              Xem tất cả ngày
+            </button>
+          </div>
+        `;
+        lucide.createIcons({ nodes: [container] });
+        return;
+      }
+
+      container.innerHTML = filteredOrders.map(order => {
+        const totalCups = order.items.reduce((s, i) => s + i.qty, 0);
+        const itemPreview = order.items.map(i => `${i.name} (x${i.qty}${i.cardSwapped ? ', Đổi thẻ' : ''})`).join(', ');
+        const isSelected = state.selectedOrderIds.includes(order.id);
+
+        return `
+          <div class="p-4 sm:p-5 ${isSelected ? 'bg-amber-50/70' : 'hover:bg-cream-50/70'} transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="flex items-start gap-3.5 min-w-0">
+              <input
+                type="checkbox"
+                ${isSelected ? 'checked' : ''}
+                onchange="toggleOrderSelection('${order.id}', this.checked)"
+                aria-label="Chọn đơn hàng ${order.id}"
+                class="mt-1 w-4 h-4 rounded border-espresso-300 text-amber-600 focus:ring-amber-500 cursor-pointer shrink-0 accent-amber-600"
+              />
+              <div class="space-y-1.5 min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-extrabold text-espresso-900 text-sm">${order.id}</span>
+                  <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-matcha-100 text-matcha-700">
+                    Mang đi
+                  </span>
+                  <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-espresso-100 text-espresso-700">
+                    ${order.paymentLabel}
+                  </span>
+                  <span class="text-xs text-espresso-400">${order.formattedTime}</span>
+                </div>
+                <p class="text-xs text-espresso-600 truncate max-w-2xl">
+                  <strong class="text-espresso-800">${totalCups} món:</strong> ${itemPreview}
+                </p>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between sm:justify-end gap-2.5 sm:gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-espresso-100 pl-7 sm:pl-0">
+              <div class="text-left sm:text-right mr-1">
+                <div class="text-[11px] text-espresso-400">Tổng thanh toán</div>
+                <div class="font-extrabold text-base text-espresso-900">${formatVND(order.total)}</div>
+              </div>
+              <button
+                onclick="viewOrderReceiptById('${order.id}')"
+                class="px-3.5 py-2 rounded-xl border border-espresso-200 bg-white hover:bg-espresso-900 hover:text-white hover:border-espresso-900 text-espresso-800 text-xs font-bold flex items-center gap-1.5 transition-all"
+              >
+                <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+                <span>Xem hóa đơn</span>
+              </button>
+              <button
+                onclick="deleteOrderById('${order.id}')"
+                class="p-2 rounded-xl border border-espresso-200 bg-white hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 text-espresso-500 transition-colors"
+                title="Xóa đơn hàng này"
+              >
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      lucide.createIcons({ nodes: [container] });
+    }
+
+    // ==================== CSV EXPORT HELPERS ====================
+    function escapeCSVValue(val) {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    }
+
+    function downloadCSVFile(filename, headers, rows) {
+      const csvLines = [
+        headers.map(escapeCSVValue).join(','),
+        ...rows.map(row => row.map(escapeCSVValue).join(','))
+      ];
+      // Thêm UTF-8 BOM (﻿) để mở trực tiếp bằng Excel không bị lỗi font tiếng Việt
+      const csvContent = '\uFEFF' + csvLines.join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function exportIngredientsCSV(mode = 'filtered') {
+      const isAll = mode === 'all' || !state.ingredientFilterDate;
+      const list = isAll ? state.ingredientsHistory : getFilteredIngredients();
+
+      if (list.length === 0) {
+        showToast(
+          isAll
+            ? 'Chưa có dữ liệu nguyên liệu nào để xuất CSV!'
+            : `Không có phiếu nhập nguyên liệu nào trong ngày ${formatDateKeyVN(state.ingredientFilterDate)}!`,
+          'error'
+        );
+        return;
+      }
+
+      const headers = [
+        'STT',
+        'Mã phiếu',
+        'Ngày (YYYY-MM-DD)',
+        'Thời gian nhập',
+        'Tên nguyên liệu',
+        'Số lượng',
+        'Đơn vị tính',
+        'Đơn giá (VNĐ)',
+        'Thành tiền (VNĐ)',
+        'Nhà cung cấp / Ghi chú'
+      ];
+
+      let totalQty = 0;
+      let grandTotal = 0;
+
+      const rows = list.map((item, index) => {
+        totalQty += Number(item.qty) || 0;
+        grandTotal += Number(item.totalCost) || 0;
+        return [
+          index + 1,
+          item.id || '',
+          item.dateKey || '',
+          item.formattedTime || '',
+          item.name || '',
+          item.qty ?? 0,
+          item.unit || '',
+          item.unitPrice ?? 0,
+          item.totalCost ?? 0,
+          item.note || ''
+        ];
+      });
+
+      // Dòng tổng cộng cuối file
+      rows.push([
+        '',
+        '',
+        '',
+        '',
+        'TỔNG CỘNG',
+        totalQty,
+        '',
+        '',
+        grandTotal,
+        `${list.length} phiếu nhập`
+      ]);
+
+      const dateTag = isAll ? 'tat-ca' : state.ingredientFilterDate;
+      const filename = `OSIX-Nguyen-Lieu-${dateTag}.csv`;
+      downloadCSVFile(filename, headers, rows);
+      showToast(`Đã xuất file ${filename} (${list.length} phiếu)`);
+    }
+
+    function exportOrdersCSV(mode = 'filtered') {
+      const isAll = mode === 'all' || !state.historyFilterDate;
+      const list = isAll ? state.ordersHistory : getFilteredOrders();
+
+      if (list.length === 0) {
+        showToast(
+          isAll
+            ? 'Chưa có đơn hàng nào để xuất CSV!'
+            : `Không có đơn hàng nào trong ngày ${formatDateKeyVN(state.historyFilterDate)}!`,
+          'error'
+        );
+        return;
+      }
+
+      const headers = [
+        'STT',
+        'Mã đơn',
+        'Ngày (YYYY-MM-DD)',
+        'Thời gian tạo',
+        'Hình thức',
+        'Thanh toán',
+        'Tổng số món',
+        'Chi tiết món',
+        'Tạm tính (VNĐ)',
+        'Tổng thanh toán (VNĐ)',
+        'Khách đưa (VNĐ)',
+        'Tiền thừa (VNĐ)'
+      ];
+
+      let totalItemsAll = 0;
+      let totalSubtotalAll = 0;
+      let totalRevenueAll = 0;
+
+      const rows = list.map((order, index) => {
+        const itemsCount = Array.isArray(order.items)
+          ? order.items.reduce((sum, i) => sum + (Number(i.qty) || 0), 0)
+          : 0;
+
+        const itemsDetail = Array.isArray(order.items)
+          ? order.items.map(i => {
+              const opts = [];
+              if (!i.isFood) {
+                if (i.size) opts.push(`Size ${i.size}`);
+                if (i.ice) opts.push(i.ice.endsWith('%') ? `${i.ice} đá` : i.ice);
+                if (i.sugar) opts.push(i.sugar.endsWith('%') ? `${i.sugar} đường` : i.sugar);
+              }
+              if (i.toppings && i.toppings.length > 0) {
+                opts.push('Topping: ' + i.toppings.map(t => t.name).join('+'));
+              }
+              if (i.cardSwapped) opts.push('Đổi thẻ -100%');
+              if (i.note) opts.push(`GC: ${i.note}`);
+              const optStr = opts.length > 0 ? ` [${opts.join(', ')}]` : '';
+              return `${i.name} x${i.qty}${optStr}`;
+            }).join(' ; ')
+          : '';
+
+        totalItemsAll += itemsCount;
+        totalSubtotalAll += Number(order.subtotal) || 0;
+        totalRevenueAll += Number(order.total) || 0;
+
+        return [
+          index + 1,
+          order.id || '',
+          order.dateKey || '',
+          order.formattedTime || '',
+          order.locationLabel || 'Mang đi',
+          order.paymentLabel || '',
+          itemsCount,
+          itemsDetail,
+          order.subtotal ?? 0,
+          order.total ?? 0,
+          order.cashGiven ?? 0,
+          order.changeReturned ?? 0
+        ];
+      });
+
+      // Tính chi phí nguyên liệu tương ứng để đối soát lợi nhuận trên CSV
+      const matchingIngredients = isAll
+        ? state.ingredientsHistory
+        : state.ingredientsHistory.filter(i => i.dateKey === state.historyFilterDate);
+      const ingredientCost = matchingIngredients.reduce((sum, i) => sum + (Number(i.totalCost) || 0), 0);
+      const netProfit = totalRevenueAll - ingredientCost;
+
+      rows.push([
+        '',
+        '',
+        '',
+        '',
+        '',
+        'TỔNG CỘNG',
+        totalItemsAll,
+        `${list.length} đơn hàng`,
+        totalSubtotalAll,
+        totalRevenueAll,
+        '',
+        ''
+      ]);
+      rows.push([
+        '',
+        '',
+        '',
+        '',
+        '',
+        'CHI PHÍ NGUYÊN LIỆU',
+        '',
+        `${matchingIngredients.length} phiếu nhập`,
+        '',
+        ingredientCost,
+        '',
+        ''
+      ]);
+      rows.push([
+        '',
+        '',
+        '',
+        '',
+        '',
+        'DOANH THU TRỪ CHI PHÍ NL',
+        '',
+        '',
+        '',
+        netProfit,
+        '',
+        ''
+      ]);
+
+      const dateTag = isAll ? 'tat-ca' : state.historyFilterDate;
+      const filename = `OSIX-Lich-Su-Don-${dateTag}.csv`;
+      downloadCSVFile(filename, headers, rows);
+      showToast(`Đã xuất file ${filename} (${list.length} đơn hàng)`);
+    }
+
+    // Start app on DOM ready
+    window.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
