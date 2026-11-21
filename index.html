@@ -155,6 +155,15 @@
           <span>Lịch sử đơn</span>
           <span id="header-order-count" class="bg-espresso-700 text-amber-300 text-[11px] px-1.5 py-0.5 rounded-full font-bold">0</span>
         </button>
+
+        <button
+          id="nav-cashflow-btn"
+          onclick="switchMainView('cashflow')"
+          class="shrink-0 flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all text-espresso-200 hover:text-white"
+        >
+          <i data-lucide="piggy-bank" class="w-4 h-4"></i>
+          <span>Thu chi</span>
+        </button>
       </nav>
 
       <!-- Live Clock & Quick Revenue Pill (Desktop) -->
@@ -829,6 +838,152 @@
 
       <div id="history-list-container" class="divide-y divide-espresso-100">
         <!-- Rendered by JS -->
+      </div>
+    </div>
+  </main>
+
+
+  <!-- ==================== VIEW 4: QUẢN LÝ TIỀN HÀNG NGÀY (THU CHI) ==================== -->
+  <main id="view-cashflow" class="hidden max-w-[1400px] mx-auto p-4 sm:p-6 space-y-6">
+    <!-- Chọn ngày -->
+    <div class="bg-white rounded-2xl border border-espresso-200 shadow-xs p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5">
+        <div class="w-10 h-10 rounded-xl bg-espresso-900 text-amber-400 flex items-center justify-center shrink-0">
+          <i data-lucide="piggy-bank" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h2 class="font-bold text-espresso-900 text-base sm:text-lg leading-tight">Quản lý tiền hàng ngày</h2>
+          <p id="cf-date-label" class="text-xs text-espresso-500">Hôm nay</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="cfShiftDate(-1)" class="w-9 h-9 rounded-xl border border-espresso-200 bg-cream-50 hover:bg-espresso-100 flex items-center justify-center" title="Ngày trước">
+          <i data-lucide="chevron-left" class="w-4 h-4"></i>
+        </button>
+        <input type="date" id="cf-date" onchange="cfOnDateChange()" class="px-3 py-2 bg-cream-50 border border-espresso-200 rounded-xl text-sm font-semibold text-espresso-900 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        <button onclick="cfShiftDate(1)" class="w-9 h-9 rounded-xl border border-espresso-200 bg-cream-50 hover:bg-espresso-100 flex items-center justify-center" title="Ngày sau">
+          <i data-lucide="chevron-right" class="w-4 h-4"></i>
+        </button>
+        <button onclick="cfGoToday()" class="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition-colors">Hôm nay</button>
+      </div>
+    </div>
+
+    <!-- Thẻ tổng hợp -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div class="bg-white p-4 sm:p-5 rounded-2xl border border-espresso-200 shadow-xs">
+        <div class="flex items-center gap-2 text-xs font-medium text-espresso-500"><span class="w-7 h-7 rounded-lg bg-matcha-100 text-matcha-700 flex items-center justify-center"><i data-lucide="trending-up" class="w-4 h-4"></i></span>Tổng thu</div>
+        <p id="cf-total-in" class="text-lg sm:text-xl font-extrabold text-matcha-700 mt-2">0đ</p>
+        <p id="cf-total-in-sub" class="text-[11px] text-espresso-500 mt-0.5">Bán hàng + thu khác</p>
+      </div>
+      <div class="bg-white p-4 sm:p-5 rounded-2xl border border-espresso-200 shadow-xs">
+        <div class="flex items-center gap-2 text-xs font-medium text-espresso-500"><span class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center"><i data-lucide="trending-down" class="w-4 h-4"></i></span>Tổng chi</div>
+        <p id="cf-total-out" class="text-lg sm:text-xl font-extrabold text-rose-700 mt-2">0đ</p>
+        <p id="cf-total-out-sub" class="text-[11px] text-espresso-500 mt-0.5">Nhập hàng + chi khác</p>
+      </div>
+      <div class="bg-white p-4 sm:p-5 rounded-2xl border border-espresso-200 shadow-xs">
+        <div class="flex items-center gap-2 text-xs font-medium text-espresso-500"><span class="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center"><i data-lucide="calculator" class="w-4 h-4"></i></span>Lãi / lỗ trong ngày</div>
+        <p id="cf-profit" class="text-lg sm:text-xl font-extrabold text-espresso-900 mt-2">0đ</p>
+        <p class="text-[11px] text-espresso-500 mt-0.5">Tổng thu − Tổng chi</p>
+      </div>
+      <div class="bg-espresso-900 p-4 sm:p-5 rounded-2xl shadow-xs text-cream-50">
+        <div class="flex items-center gap-2 text-xs font-medium text-espresso-200"><span class="w-7 h-7 rounded-lg bg-espresso-700 text-amber-400 flex items-center justify-center"><i data-lucide="banknote" class="w-4 h-4"></i></span>Tổng két dự kiến</div>
+        <p id="cf-expected-cash" class="text-lg sm:text-xl font-extrabold text-amber-400 mt-2">0đ</p>
+        <p class="text-[11px] text-espresso-300 mt-0.5">Đầu ngày + tiền mặt + chuyển khoản − chi</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <!-- Cột trái: thêm khoản + chốt két -->
+      <div class="lg:col-span-5 space-y-6">
+        <div class="bg-white rounded-2xl border border-espresso-200 shadow-xs overflow-hidden">
+          <div class="p-4 sm:p-5 border-b border-espresso-100 bg-cream-50/70 flex items-center justify-between gap-2.5">
+            <div class="flex items-center gap-2.5">
+              <div class="w-9 h-9 rounded-xl bg-espresso-900 text-amber-400 flex items-center justify-center shrink-0"><i data-lucide="banknote" class="w-5 h-5"></i></div>
+              <div>
+                <h3 class="font-bold text-espresso-900 text-base">Đếm tiền theo mệnh giá</h3>
+                <p class="text-xs text-espresso-500">Nhập số tờ của từng mệnh giá VNĐ</p>
+              </div>
+            </div>
+            <button type="button" onclick="cfClearCounts()" class="px-2.5 py-1.5 rounded-lg bg-espresso-100 hover:bg-espresso-200 text-[11px] font-bold text-espresso-800 flex items-center gap-1 shrink-0">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>Xóa hết
+            </button>
+          </div>
+          <div class="p-4 sm:p-5">
+            <div class="grid grid-cols-12 gap-2 px-1 pb-2 text-[11px] font-bold uppercase text-espresso-500">
+              <div class="col-span-4">Mệnh giá</div>
+              <div class="col-span-4 text-center">Số tờ</div>
+              <div class="col-span-4 text-right">Thành tiền</div>
+            </div>
+            <div id="cf-denom-rows" class="space-y-2"></div>
+            <div class="mt-4 pt-4 border-t border-dashed border-espresso-200 space-y-1.5">
+              <div class="flex items-center justify-between text-xs text-espresso-600 font-semibold">
+                <span>Tổng số tờ</span><span id="cf-denom-pieces" class="font-bold text-espresso-900">0 tờ</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-bold text-espresso-900">Tổng tiền đếm được</span>
+                <span id="cf-denom-total" class="text-xl font-extrabold text-matcha-700">0đ</span>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2 mt-4">
+              <button type="button" onclick="cfApplyCount('openingCash')" class="py-2.5 rounded-xl border border-espresso-200 bg-cream-50 hover:bg-espresso-100 text-xs font-bold text-espresso-800 transition-colors">Dùng làm tiền đầu ngày</button>
+              <button type="button" onclick="cfApplyCount('countedCash')" class="py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors">Dùng làm tiền cuối ngày</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-espresso-200 shadow-xs overflow-hidden">
+          <div class="p-4 sm:p-5 border-b border-espresso-100 bg-cream-50/70 flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-espresso-900 text-amber-400 flex items-center justify-center shrink-0"><i data-lucide="vault" class="w-5 h-5"></i></div>
+            <div>
+              <h3 class="font-bold text-espresso-900 text-base">Chốt két cuối ngày</h3>
+              <p class="text-xs text-espresso-500">Đối chiếu tiền mặt thực tế với số dự kiến</p>
+            </div>
+          </div>
+          <div class="p-4 sm:p-5 space-y-4">
+            <div>
+              <label for="cf-opening" class="block text-xs font-bold text-espresso-800 mb-1.5">Tiền mặt đầu ngày (VNĐ)</label>
+              <input type="number" id="cf-opening" min="0" step="1000" placeholder="0" oninput="cfSaveDayInputs()" class="w-full px-3.5 py-2.5 bg-cream-50 border border-espresso-200 rounded-xl text-sm font-bold text-espresso-900 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+              <p id="cf-opening-hint" class="text-[11px] text-espresso-500 mt-1"></p>
+            </div>
+            <div>
+              <label for="cf-counted" class="block text-xs font-bold text-espresso-800 mb-1.5">Tiền mặt đếm được cuối ngày (VNĐ)</label>
+              <input type="number" id="cf-counted" min="0" step="1000" placeholder="Nhập sau khi đếm két" oninput="cfSaveDayInputs()" class="w-full px-3.5 py-2.5 bg-cream-50 border border-espresso-200 rounded-xl text-sm font-bold text-espresso-900 placeholder-espresso-400 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+            </div>
+            <div id="cf-diff-box" class="hidden rounded-xl px-4 py-3 text-sm font-bold flex items-center justify-between gap-2"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cột phải: chi tiết ngày + 7 ngày gần nhất -->
+      <div class="lg:col-span-7 space-y-6">
+        <div class="bg-white rounded-2xl border border-espresso-200 shadow-xs overflow-hidden">
+          <div class="p-4 sm:p-5 border-b border-espresso-100 bg-cream-50/60">
+            <h3 class="font-bold text-espresso-900 text-base">Chi tiết thu chi trong ngày</h3>
+            <p class="text-xs text-espresso-500">Gồm các khoản tự động từ đơn hàng, phiếu nhập và khoản bạn ghi tay</p>
+          </div>
+          <div id="cf-breakdown" class="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm"></div>
+          <div id="cf-entries-list" class="divide-y divide-espresso-100 border-t border-espresso-100"></div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-espresso-200 shadow-xs overflow-hidden">
+          <div class="p-4 sm:p-5 border-b border-espresso-100 bg-cream-50/60 flex items-center justify-between gap-2">
+            <div>
+              <h3 class="font-bold text-espresso-900 text-base">7 ngày gần nhất</h3>
+              <p class="text-xs text-espresso-500">Bấm vào một dòng để xem ngày đó</p>
+            </div>
+            <button onclick="cfExportCSV()" class="px-3 py-2 rounded-xl bg-espresso-100 hover:bg-espresso-200 text-espresso-800 text-xs font-semibold flex items-center gap-1.5 transition-colors">
+              <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i><span>Xuất CSV</span>
+            </button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm min-w-[480px]">
+              <thead class="bg-cream-50 text-[11px] uppercase text-espresso-500">
+                <tr><th class="text-left px-4 py-2.5 font-bold">Ngày</th><th class="text-right px-4 py-2.5 font-bold">Thu</th><th class="text-right px-4 py-2.5 font-bold">Chi</th><th class="text-right px-4 py-2.5 font-bold">Lãi / lỗ</th></tr>
+              </thead>
+              <tbody id="cf-week-body" class="divide-y divide-espresso-100"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   </main>
@@ -2090,7 +2245,7 @@
         showToast('Chưa cấu hình Supabase - đang dùng tạm bộ nhớ trình duyệt', 'info');
       }
       await migrateLocalDataToSupabase();
-      await Promise.all([loadOrdersFromStorage(), loadIngredientsFromStorage()]);
+      await Promise.all([loadOrdersFromStorage(), loadIngredientsFromStorage(), loadCashflow()]);
       await loadCustomProductImages();
       updateLoadedImagesBadge();
       renderCategoryTabs();
@@ -2108,6 +2263,405 @@
       lucide.createIcons();
     }
 
+
+    // ==================== QUẢN LÝ TIỀN HÀNG NGÀY (THU CHI) ====================
+    const CASHFLOW_TABLE = 'osix_cashflow';
+    const CASHFLOW_STORAGE_KEY = 'osix_cafe_cashflow_v1';
+    const CF_CATEGORIES = {
+      out: ['Tiền điện / nước', 'Tiền thuê mặt bằng', 'Lương nhân viên', 'Mua vật dụng / sửa chữa', 'Vận chuyển', 'Marketing', 'Chi khác'],
+      in: ['Thu khác', 'Vốn bỏ thêm', 'Hoàn tiền từ nhà cung cấp']
+    };
+    let cashflow = { entries: [], days: {} };   // days[dateKey] = { openingCash, countedCash }
+    let cfDate = getLocalDateKey();
+    let cfType = 'out';
+    let cfDbWarned = false;
+
+    function cfWarnOnce(err) {
+      console.error('Cashflow DB:', err);
+      if (!cfDbWarned) {
+        cfDbWarned = true;
+        showToast('Bảng osix_cashflow chưa có trên Supabase - đang lưu tạm trong trình duyệt', 'info');
+      }
+    }
+
+    function cfSaveLocal() {
+      try { localStorage.setItem(CASHFLOW_STORAGE_KEY, JSON.stringify(cashflow)); } catch (e) {}
+    }
+
+    async function loadCashflow() {
+      let local = { entries: [], days: {} };
+      try {
+        const raw = localStorage.getItem(CASHFLOW_STORAGE_KEY);
+        if (raw) local = Object.assign(local, JSON.parse(raw));
+      } catch (e) {}
+      cashflow = local;
+      if (!dbReady()) return;
+      try {
+        const rows = await fetchAllRows(CASHFLOW_TABLE);
+        if (rows.length > 0) {
+          cashflow = { entries: [], days: {} };
+          rows.forEach(r => {
+            if (r.kind === 'entry') cashflow.entries.push(r);
+            else if (r.kind === 'day') cashflow.days[r.dateKey] = { openingCash: r.openingCash, countedCash: r.countedCash, counts: r.counts || {} };
+          });
+          cfSaveLocal();
+        }
+      } catch (err) { cfWarnOnce(err); }
+    }
+
+    async function cfDbUpsert(obj) {
+      cfSaveLocal();
+      if (!dbReady()) return;
+      const row = { id: obj.id, date_key: obj.dateKey, created_at: obj.createdAt || new Date().toISOString(), data: obj };
+      const { error } = await sb.from(CASHFLOW_TABLE).upsert(row, { onConflict: 'id' });
+      if (error) cfWarnOnce(error);
+    }
+
+    async function cfDbDelete(id) {
+      cfSaveLocal();
+      if (!dbReady()) return;
+      const { error } = await sb.from(CASHFLOW_TABLE).delete().eq('id', id);
+      if (error) cfWarnOnce(error);
+    }
+
+    function cfDayRecord(dateKey) {
+      const saved = cashflow.days[dateKey];
+      if (saved) return saved;
+      // Gợi ý: lấy tiền đếm được của ngày gần nhất trước đó
+      const prevKeys = Object.keys(cashflow.days).filter(k => k < dateKey && cashflow.days[k].countedCash !== '' && cashflow.days[k].countedCash != null).sort();
+      const prev = prevKeys.length ? prevKeys[prevKeys.length - 1] : null;
+      return { openingCash: '', countedCash: '', suggested: prev ? Number(cashflow.days[prev].countedCash) : null, suggestedFrom: prev };
+    }
+
+    function cfComputeDay(dateKey) {
+      const orders = state.ordersHistory.filter(o => o.dateKey === dateKey);
+      const cashSales = orders.filter(o => o.paymentMethod === 'cash').reduce((s, o) => s + (Number(o.total) || 0), 0);
+      const qrSales = orders.filter(o => o.paymentMethod === 'qr').reduce((s, o) => s + (Number(o.total) || 0), 0);
+      const otherSales = orders.reduce((s, o) => s + (Number(o.total) || 0), 0) - cashSales - qrSales;
+      const ingCost = state.ingredientsHistory.filter(i => i.dateKey === dateKey).reduce((s, i) => s + (Number(i.totalCost) || 0), 0);
+      const entries = cashflow.entries.filter(e => e.dateKey === dateKey);
+      const otherIn = entries.filter(e => e.type === 'in').reduce((s, e) => s + e.amount, 0);
+      const otherOut = entries.filter(e => e.type === 'out').reduce((s, e) => s + e.amount, 0);
+      const sales = cashSales + qrSales + otherSales;
+      const totalIn = sales + otherIn;
+      const totalOut = ingCost + otherOut;
+      const rec = cfDayRecord(dateKey);
+      const opening = Number(rec.openingCash !== '' && rec.openingCash != null ? rec.openingCash : (rec.suggested || 0));
+      // Tổng két = tiền đầu ngày + tiền mặt + tiền chuyển khoản (+ thu khác nếu có) − chi
+      const expectedCash = opening + cashSales + qrSales + otherSales + otherIn - totalOut;
+      return { orders, cashSales, qrSales, otherSales, sales, ingCost, entries, otherIn, otherOut, totalIn, totalOut, profit: totalIn - totalOut, opening, expectedCash, rec };
+    }
+
+    function cfFormatLong(dateKey) {
+      const d = new Date(dateKey + 'T00:00:00');
+      const label = d.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+      return dateKey === getLocalDateKey() ? 'Hôm nay • ' + label : label;
+    }
+
+    function cfSetType(type) {
+      cfType = type;
+      const on = 'py-2 rounded-lg text-sm font-bold transition-all shadow-sm ';
+      const off = 'py-2 rounded-lg text-sm font-bold transition-all text-espresso-500 hover:text-espresso-800';
+      document.getElementById('cf-type-out').className = type === 'out' ? on + 'bg-rose-600 text-white' : off;
+      document.getElementById('cf-type-in').className = type === 'in' ? on + 'bg-matcha-600 text-white' : off;
+      document.getElementById('cf-category').innerHTML = CF_CATEGORIES[type].map(c => `<option value="${c}">${c}</option>`).join('');
+      const btn = document.getElementById('cf-submit-btn');
+      btn.querySelector('span').textContent = type === 'out' ? 'Lưu khoản chi' : 'Lưu khoản thu';
+      btn.className = 'w-full py-3 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors ' + (type === 'out' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-matcha-600 hover:bg-matcha-700');
+    }
+
+    function cfQuickAmount(v) {
+      const el = document.getElementById('cf-amount');
+      el.value = (Number(el.value) || 0) + v;
+    }
+
+    function cfOnDateChange() {
+      const v = document.getElementById('cf-date').value;
+      cfDate = v || getLocalDateKey();
+      renderCashflow();
+    }
+    function cfShiftDate(delta) {
+      const d = new Date(cfDate + 'T00:00:00');
+      d.setDate(d.getDate() + delta);
+      cfDate = getLocalDateKey(d);
+      renderCashflow();
+    }
+    function cfGoToday() { cfDate = getLocalDateKey(); renderCashflow(); }
+    function cfOpenDay(dateKey) { cfDate = dateKey; renderCashflow(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+    async function cfAddEntry(e) {
+      e.preventDefault();
+      const amount = Math.round(Number(document.getElementById('cf-amount').value));
+      if (!amount || amount <= 0) { showToast('Vui lòng nhập số tiền hợp lệ', 'error'); return; }
+      const entry = {
+        id: 'CF-' + Date.now(),
+        kind: 'entry',
+        dateKey: cfDate,
+        type: cfType,
+        category: document.getElementById('cf-category').value,
+        amount,
+        note: document.getElementById('cf-note').value.trim(),
+        createdAt: new Date().toISOString()
+      };
+      cashflow.entries.push(entry);
+      document.getElementById('cf-amount').value = '';
+      document.getElementById('cf-note').value = '';
+      renderCashflow();
+      showToast(`Đã ghi ${cfType === 'out' ? 'chi' : 'thu'} ${formatVND(amount)} - ${entry.category}`);
+      await cfDbUpsert(entry);
+    }
+
+    async function cfDeleteEntry(id) {
+      if (!confirm('Xóa khoản này?')) return;
+      cashflow.entries = cashflow.entries.filter(e => e.id !== id);
+      renderCashflow();
+      showToast('Đã xóa khoản thu chi', 'info');
+      await cfDbDelete(id);
+    }
+
+    let cfSaveTimer = null;
+    function cfSaveDayInputs() {
+      const opening = document.getElementById('cf-opening').value;
+      const counted = document.getElementById('cf-counted').value;
+      const prevDay = cashflow.days[cfDate] || {};
+      cashflow.days[cfDate] = { openingCash: opening === '' ? '' : Number(opening), countedCash: counted === '' ? '' : Number(counted), counts: prevDay.counts || {} };
+      renderCashflow(true);
+      clearTimeout(cfSaveTimer);
+      const dateKey = cfDate;
+      cfSaveTimer = setTimeout(() => {
+        const d = cashflow.days[dateKey];
+        cfDbUpsert({ id: 'DAY-' + dateKey, kind: 'day', dateKey, openingCash: d.openingCash, countedCash: d.countedCash, counts: d.counts || {} });
+      }, 600);
+    }
+
+
+    // ---------- Đếm tiền theo mệnh giá ----------
+    const CF_DENOMS = [
+      { v: 500000, label: '500.000đ', chip: 'bg-sky-100 text-sky-800' },
+      { v: 200000, label: '200.000đ', chip: 'bg-rose-100 text-rose-800' },
+      { v: 100000, label: '100.000đ', chip: 'bg-emerald-100 text-emerald-800' },
+      { v: 50000,  label: '50.000đ',  chip: 'bg-pink-100 text-pink-800' },
+      { v: 20000,  label: '20.000đ',  chip: 'bg-blue-100 text-blue-800' },
+      { v: 10000,  label: '10.000đ',  chip: 'bg-amber-100 text-amber-800' },
+      { v: 5000,   label: '5.000đ',   chip: 'bg-indigo-100 text-indigo-800' },
+      { v: 2000,   label: '2.000đ',   chip: 'bg-stone-200 text-stone-800' },
+      { v: 1000,   label: '1.000đ',   chip: 'bg-purple-100 text-purple-800' },
+      { v: 500,    label: '500đ',     chip: 'bg-teal-100 text-teal-800' }
+    ];
+
+    function cfGetCounts() {
+      const d = cashflow.days[cfDate];
+      return (d && d.counts) ? d.counts : {};
+    }
+
+    function cfEnsureDay() {
+      if (!cashflow.days[cfDate]) {
+        const r = cfDayRecord(cfDate);
+        cashflow.days[cfDate] = { openingCash: r.openingCash, countedCash: r.countedCash, counts: {} };
+      }
+      if (!cashflow.days[cfDate].counts) cashflow.days[cfDate].counts = {};
+      return cashflow.days[cfDate];
+    }
+
+    function cfPersistDay() {
+      clearTimeout(cfSaveTimer);
+      const dateKey = cfDate;
+      cfSaveTimer = setTimeout(() => {
+        const d = cashflow.days[dateKey];
+        if (d) cfDbUpsert({ id: 'DAY-' + dateKey, kind: 'day', dateKey, openingCash: d.openingCash, countedCash: d.countedCash, counts: d.counts || {} });
+      }, 600);
+      cfSaveLocal();
+    }
+
+    function renderDenomTable() {
+      const counts = cfGetCounts();
+      const box = document.getElementById('cf-denom-rows');
+      if (!box) return;
+      box.innerHTML = CF_DENOMS.map(d => {
+        const n = Number(counts[d.v]) || 0;
+        return `
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-4"><span class="inline-block px-2.5 py-1.5 rounded-lg text-xs font-extrabold tabular-nums ${d.chip}">${d.label}</span></div>
+            <div class="col-span-4 flex items-center justify-center gap-1">
+              <button type="button" onclick="cfStepCount(${d.v}, -1)" class="w-7 h-8 rounded-lg bg-espresso-100 hover:bg-espresso-200 text-espresso-800 font-bold leading-none">−</button>
+              <input type="number" min="0" step="1" inputmode="numeric" id="cf-denom-${d.v}" value="${n === 0 ? '' : n}" placeholder="0" oninput="cfSetCount(${d.v}, this.value)"
+                class="w-full min-w-0 px-1 py-1.5 bg-cream-50 border border-espresso-200 rounded-lg text-sm font-bold text-center text-espresso-900 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+              <button type="button" onclick="cfStepCount(${d.v}, 1)" class="w-7 h-8 rounded-lg bg-espresso-100 hover:bg-espresso-200 text-espresso-800 font-bold leading-none">+</button>
+            </div>
+            <div id="cf-denom-sub-${d.v}" class="col-span-4 text-right text-sm font-bold tabular-nums ${n ? 'text-espresso-900' : 'text-espresso-300'}">${formatVND(n * d.v)}</div>
+          </div>`;
+      }).join('');
+      cfUpdateDenomTotals();
+    }
+
+    function cfUpdateDenomTotals() {
+      const counts = cfGetCounts();
+      let total = 0, pieces = 0;
+      CF_DENOMS.forEach(d => {
+        const n = Number(counts[d.v]) || 0;
+        total += n * d.v; pieces += n;
+        const sub = document.getElementById('cf-denom-sub-' + d.v);
+        if (sub) {
+          sub.textContent = formatVND(n * d.v);
+          sub.className = 'col-span-4 text-right text-sm font-bold tabular-nums ' + (n ? 'text-espresso-900' : 'text-espresso-300');
+        }
+      });
+      document.getElementById('cf-denom-total').textContent = formatVND(total);
+      document.getElementById('cf-denom-pieces').textContent = pieces.toLocaleString('vi-VN') + ' tờ';
+      return total;
+    }
+
+    function cfSetCount(v, raw) {
+      const n = Math.max(0, Math.floor(Number(raw) || 0));
+      const day = cfEnsureDay();
+      if (n === 0) delete day.counts[v]; else day.counts[v] = n;
+      cfUpdateDenomTotals();
+      cfPersistDay();
+    }
+
+    function cfStepCount(v, delta) {
+      const cur = Number(cfGetCounts()[v]) || 0;
+      const n = Math.max(0, cur + delta);
+      cfSetCount(v, n);
+      const input = document.getElementById('cf-denom-' + v);
+      if (input) input.value = n === 0 ? '' : n;
+    }
+
+    function cfClearCounts() {
+      const day = cashflow.days[cfDate];
+      if (!day || !day.counts || Object.keys(day.counts).length === 0) return;
+      if (!confirm('Xóa toàn bộ số tờ đã nhập của ngày này?')) return;
+      day.counts = {};
+      cfPersistDay();
+      renderDenomTable();
+    }
+
+    function cfApplyCount(field) {
+      const total = cfUpdateDenomTotals();
+      if (total <= 0) { showToast('Chưa nhập số tờ nào', 'error'); return; }
+      const day = cfEnsureDay();
+      day[field] = total;
+      cfPersistDay();
+      renderCashflow();
+      showToast(`Đã điền ${formatVND(total)} vào ${field === 'openingCash' ? 'tiền đầu ngày' : 'tiền cuối ngày'}`);
+    }
+
+    function cfColorClass(n) { return n > 0 ? 'text-matcha-700' : n < 0 ? 'text-rose-700' : 'text-espresso-900'; }
+    function cfSigned(n) { return (n > 0 ? '+' : n < 0 ? '−' : '') + formatVND(Math.abs(n)); }
+
+    function renderCashflow(keepInputs = false) {
+      const c = cfComputeDay(cfDate);
+      document.getElementById('cf-date').value = cfDate;
+      document.getElementById('cf-date-label').textContent = cfFormatLong(cfDate);
+
+      document.getElementById('cf-total-in').textContent = formatVND(c.totalIn);
+      document.getElementById('cf-total-in-sub').textContent = `Bán hàng ${formatVND(c.sales)} • Thu khác ${formatVND(c.otherIn)}`;
+      document.getElementById('cf-total-out').textContent = formatVND(c.totalOut);
+      document.getElementById('cf-total-out-sub').textContent = `Nhập hàng ${formatVND(c.ingCost)} • Chi khác ${formatVND(c.otherOut)}`;
+      const profitEl = document.getElementById('cf-profit');
+      profitEl.textContent = cfSigned(c.profit).replace('+', '');
+      profitEl.className = 'text-lg sm:text-xl font-extrabold mt-2 ' + cfColorClass(c.profit);
+      document.getElementById('cf-expected-cash').textContent = formatVND(c.expectedCash);
+
+      // Chốt két
+      if (!keepInputs) {
+        renderDenomTable();
+        const r = c.rec;
+        document.getElementById('cf-opening').value = (r.openingCash === '' || r.openingCash == null) ? '' : r.openingCash;
+        document.getElementById('cf-opening').placeholder = r.suggested ? String(r.suggested) : '0';
+        document.getElementById('cf-counted').value = (r.countedCash === '' || r.countedCash == null) ? '' : r.countedCash;
+      }
+      const hint = document.getElementById('cf-opening-hint');
+      const r = c.rec;
+      hint.textContent = (r.openingCash === '' || r.openingCash == null) && r.suggested
+        ? `Đang lấy tiền chốt két ngày ${formatDateKeyVN(r.suggestedFrom)}: ${formatVND(r.suggested)}. Nhập số khác nếu cần.`
+        : '';
+
+      const diffBox = document.getElementById('cf-diff-box');
+      const counted = document.getElementById('cf-counted').value;
+      if (counted === '') {
+        diffBox.classList.add('hidden');
+      } else {
+        const diff = Number(counted) - c.expectedCash;
+        diffBox.classList.remove('hidden');
+        diffBox.className = 'rounded-xl px-4 py-3 text-sm font-bold flex items-center justify-between gap-2 ' +
+          (diff === 0 ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : diff > 0 ? 'bg-amber-50 border border-amber-200 text-amber-800' : 'bg-rose-50 border border-rose-200 text-rose-800');
+        diffBox.innerHTML = `<span>${diff === 0 ? 'Két khớp số liệu' : diff > 0 ? 'Két thừa so với dự kiến' : 'Két thiếu so với dự kiến'}</span><span class="text-base font-extrabold">${diff === 0 ? '0đ' : cfSigned(diff)}</span>`;
+      }
+
+      // Bảng tổng hợp theo nguồn
+      const row = (label, val, cls, icon) => `
+        <div class="flex items-center justify-between gap-2 bg-cream-50 border border-espresso-100 rounded-xl px-3.5 py-2.5">
+          <span class="flex items-center gap-2 text-espresso-700 text-xs font-semibold"><i data-lucide="${icon}" class="w-4 h-4"></i>${label}</span>
+          <span class="font-extrabold ${cls}">${formatVND(val)}</span>
+        </div>`;
+      document.getElementById('cf-breakdown').innerHTML =
+        row(`Bán tiền mặt (${c.orders.filter(o => o.paymentMethod === 'cash').length} đơn)`, c.cashSales, 'text-matcha-700', 'banknote') +
+        row(`Bán chuyển khoản / QR (${c.orders.filter(o => o.paymentMethod === 'qr').length} đơn)`, c.qrSales, 'text-matcha-700', 'qr-code') +
+        row('Nhập nguyên liệu', c.ingCost, 'text-rose-700', 'package-plus') +
+        row('Chi khác', c.otherOut, 'text-rose-700', 'receipt');
+
+      // Danh sách khoản ghi tay
+      const list = document.getElementById('cf-entries-list');
+      const entries = c.entries.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      list.innerHTML = entries.length === 0
+        ? '<div class="p-6 text-center text-xs text-espresso-500">Chưa có khoản thu chi nào được ghi tay trong ngày này.</div>'
+        : entries.map(en => `
+          <div class="px-4 sm:px-5 py-3 flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${en.type === 'in' ? 'bg-matcha-100 text-matcha-700' : 'bg-rose-100 text-rose-700'}">
+              <i data-lucide="${en.type === 'in' ? 'arrow-down-left' : 'arrow-up-right'}" class="w-4 h-4"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-bold text-espresso-900 truncate">${escapeHtmlCf(en.category)}</p>
+              <p class="text-[11px] text-espresso-500 truncate">${new Date(en.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}${en.note ? ' • ' + escapeHtmlCf(en.note) : ''}</p>
+            </div>
+            <div class="font-extrabold text-sm ${en.type === 'in' ? 'text-matcha-700' : 'text-rose-700'}">${en.type === 'in' ? '+' : '−'}${formatVND(en.amount)}</div>
+            <button onclick="cfDeleteEntry('${en.id}')" class="w-8 h-8 rounded-lg text-espresso-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center" title="Xóa"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+          </div>`).join('');
+
+      // 7 ngày gần nhất (kết thúc tại ngày đang xem)
+      const body = document.getElementById('cf-week-body');
+      let html = '';
+      const base = new Date(cfDate + 'T00:00:00');
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(base); d.setDate(base.getDate() - i);
+        const key = getLocalDateKey(d);
+        const x = cfComputeDay(key);
+        html += `
+          <tr onclick="cfOpenDay('${key}')" class="cursor-pointer hover:bg-cream-50 ${key === cfDate ? 'bg-amber-50/60' : ''}">
+            <td class="px-4 py-2.5 font-semibold text-espresso-900">${formatDateKeyVN(key)} <span class="text-[11px] text-espresso-500 font-medium">${d.toLocaleDateString('vi-VN', { weekday: 'short' })}</span></td>
+            <td class="px-4 py-2.5 text-right font-bold text-matcha-700">${formatVND(x.totalIn)}</td>
+            <td class="px-4 py-2.5 text-right font-bold text-rose-700">${formatVND(x.totalOut)}</td>
+            <td class="px-4 py-2.5 text-right font-extrabold ${cfColorClass(x.profit)}">${cfSigned(x.profit).replace('+', '')}</td>
+          </tr>`;
+      }
+      body.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    function escapeHtmlCf(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+
+    function cfExportCSV() {
+      const keys = new Set();
+      state.ordersHistory.forEach(o => keys.add(o.dateKey));
+      state.ingredientsHistory.forEach(i => keys.add(i.dateKey));
+      cashflow.entries.forEach(e => keys.add(e.dateKey));
+      Object.keys(cashflow.days).forEach(k => keys.add(k));
+      const sorted = Array.from(keys).filter(Boolean).sort().reverse();
+      if (sorted.length === 0) { showToast('Chưa có dữ liệu để xuất', 'error'); return; }
+      const headers = ['Ngày', 'Bán tiền mặt', 'Bán QR', 'Thu khác', 'Tổng thu', 'Nhập nguyên liệu', 'Chi khác', 'Tổng chi', 'Lãi/lỗ', 'Tiền đầu ngày', 'Dự kiến trong két', 'Đếm thực tế', 'Chênh lệch'];
+      const rows = sorted.map(k => {
+        const c = cfComputeDay(k);
+        const counted = c.rec.countedCash;
+        const has = counted !== '' && counted != null;
+        return [formatDateKeyVN(k), c.cashSales, c.qrSales, c.otherIn, c.totalIn, c.ingCost, c.otherOut, c.totalOut, c.profit, c.opening, c.expectedCash, has ? counted : '', has ? Number(counted) - c.expectedCash : ''];
+      });
+      downloadCSVFile('OSIX-Thu-Chi-Hang-Ngay.csv', headers, rows);
+      showToast(`Đã xuất file OSIX-Thu-Chi-Hang-Ngay.csv (${rows.length} ngày)`);
+    }
+
     // ==================== NAVIGATION ====================
     function switchMainView(view) {
       state.selectedOrderIds = [];
@@ -2119,6 +2673,8 @@
       const posView = document.getElementById('view-pos');
       const ingredientsView = document.getElementById('view-ingredients');
       const historyView = document.getElementById('view-history');
+      const cashflowView = document.getElementById('view-cashflow');
+      const cashflowBtn = document.getElementById('nav-cashflow-btn');
 
       const posBtn = document.getElementById('nav-pos-btn');
       const ingredientsBtn = document.getElementById('nav-ingredients-btn');
@@ -2130,6 +2686,8 @@
       posView.classList.add('hidden');
       ingredientsView.classList.add('hidden');
       historyView.classList.add('hidden');
+      cashflowView.classList.add('hidden');
+      cashflowBtn.className = inactiveClass;
 
       posBtn.className = inactiveClass;
       ingredientsBtn.className = inactiveClass;
@@ -2142,6 +2700,10 @@
         ingredientsView.classList.remove('hidden');
         ingredientsBtn.className = activeClass;
         renderIngredientsList();
+      } else if (view === 'cashflow') {
+        cashflowView.classList.remove('hidden');
+        cashflowBtn.className = activeClass;
+        renderCashflow();
       } else {
         historyView.classList.remove('hidden');
         historyBtn.className = activeClass;
