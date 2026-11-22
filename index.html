@@ -1617,7 +1617,7 @@
       }
     }
 
-    async function saveCustomProductImage(itemId, dataUrl) {
+    async function saveCustomProductImageLocal(itemId, dataUrl) {
       customProductImages[itemId] = dataUrl;
       try {
         const db = await openProductImagesDB();
@@ -1635,7 +1635,95 @@
       }
     }
 
+    // ===== LƯU ẢNH SẢN PHẨM VĨNH VIỄN (Supabase + IndexedDB) =====
+    const PRODUCT_IMAGES_TABLE = 'osix_product_images';
+    let imgDbWarned = false;
+
+    function imgDbWarnOnce(err) {
+      console.error('Product images DB:', err);
+      if (!imgDbWarned) {
+        imgDbWarned = true;
+        showToast('Bảng osix_product_images chưa có trên Supabase - ảnh chỉ đang lưu trong trình duyệt này', 'info');
+      }
+    }
+
+    async function dbUpsertProductImage(itemId, dataUrl) {
+      if (!dbReady()) return false;
+      try {
+        const nowIso = new Date().toISOString();
+        const row = {
+          id: itemId,
+          date_key: getLocalDateKey(),
+          created_at: nowIso,
+          data: { itemId, dataUrl, updatedAt: nowIso }
+        };
+        const { error } = await sb.from(PRODUCT_IMAGES_TABLE).upsert(row, { onConflict: 'id' });
+        if (error) throw error;
+        return true;
+      } catch (err) {
+        imgDbWarnOnce(err);
+        return false;
+      }
+    }
+
+    async function dbDeleteProductImage(itemId) {
+      if (!dbReady()) return;
+      try {
+        const { error } = await sb.from(PRODUCT_IMAGES_TABLE).delete().eq('id', itemId);
+        if (error) throw error;
+      } catch (err) {
+        imgDbWarnOnce(err);
+      }
+    }
+
+    // Lưu ngay: vừa vào bộ nhớ trình duyệt, vừa đẩy lên Supabase
+    async function saveCustomProductImage(itemId, dataUrl) {
+      await saveCustomProductImageLocal(itemId, dataUrl);
+      await dbUpsertProductImage(itemId, dataUrl);
+    }
+
     async function removeCustomProductImage(itemId) {
+      await removeCustomProductImageLocal(itemId);
+      await dbDeleteProductImage(itemId);
+    }
+
+    // Tải ảnh đã lưu từ Supabase; ảnh nào mới có ở máy này mà chưa có trên Supabase thì đẩy lên luôn
+    async function loadProductImagesFromDb() {
+      if (!dbReady()) return;
+      try {
+        const remote = {};
+        const pageSize = 10;
+        let from = 0;
+        while (true) {
+          const { data, error } = await sb
+            .from(PRODUCT_IMAGES_TABLE)
+            .select('id,data')
+            .order('id', { ascending: true })
+            .range(from, from + pageSize - 1);
+          if (error) throw error;
+          data.forEach(r => {
+            if (r && r.data && r.data.dataUrl) remote[r.id] = r.data.dataUrl;
+          });
+          if (data.length < pageSize) break;
+          from += pageSize;
+        }
+
+        for (const [id, url] of Object.entries(remote)) {
+          if (customProductImages[id] !== url) {
+            await saveCustomProductImageLocal(id, url);
+          }
+        }
+        for (const [id, url] of Object.entries(customProductImages)) {
+          if (!remote[id]) {
+            await dbUpsertProductImage(id, url);
+          }
+        }
+      } catch (err) {
+        imgDbWarnOnce(err);
+      }
+    }
+
+    async function removeCustomProductImageLocal(itemId) {
       delete customProductImages[itemId];
       try {
         const db = await openProductImagesDB();
@@ -1901,7 +1989,8 @@
         if (state.modalItem && state.modalItem.id === itemId) {
           updateModalHeaderMedia(state.modalItem);
         }
-        showToast(`Đã tự động xóa nền & cập nhật ảnh cho "${item ? item.name : itemId}"`);
+        updateLoadedImagesBadge();
+        showToast(`Đã xóa nền & lưu ảnh cho "${item ? item.name : itemId}"`);
       } catch (err) {
         console.error('Lỗi tải ảnh sản phẩm:', err);
         showToast('Không thể đọc file ảnh này, vui lòng thử ảnh khác!', 'error');
@@ -2133,10 +2222,10 @@
         }
 
         // Xóa cache của những sản phẩm trước đó nạp từ thư mục pic nhưng nay file không còn trong thư mục
+        // (Giữ nguyên ảnh đã lưu, không tự xóa khi file không còn trong thư mục)
         for (const oldItemId of Object.keys(prevMeta)) {
           if (!seenItemIds.has(oldItemId)) {
-            await removeCustomProductImage(oldItemId);
-            removedCount++;
+            nextMeta[oldItemId] = prevMeta[oldItemId];
           }
         }
 
@@ -2296,7 +2385,7 @@
       }
 
       if (matchedCount > 0) {
-        showToast(`Đã tự động xóa nền & nạp ${matchedCount} ảnh khớp tên sản phẩm!`);
+        showToast(`Đã xóa nền, nạp & lưu ${matchedCount} ảnh khớp tên sản phẩm!`);
       } else {
         showToast('Không có tên ảnh nào trùng với tên sản phẩm trong menu!', 'error');
       }
@@ -2310,6 +2399,7 @@
       await migrateLocalDataToSupabase();
       await Promise.all([loadOrdersFromStorage(), loadIngredientsFromStorage(), loadCashflow()]);
       await loadCustomProductImages();
+      await loadProductImagesFromDb();
       updateLoadedImagesBadge();
       renderCategoryTabs();
       renderMenuGrid();
