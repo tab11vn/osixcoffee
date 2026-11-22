@@ -2422,7 +2422,7 @@
       out: ['Tiền điện / nước', 'Tiền thuê mặt bằng', 'Lương nhân viên', 'Mua vật dụng / sửa chữa', 'Vận chuyển', 'Marketing', 'Chi khác'],
       in: ['Thu khác', 'Vốn bỏ thêm', 'Hoàn tiền từ nhà cung cấp']
     };
-    let cashflow = { entries: [], days: {} };   // days[dateKey] = { openingCash, countedCash }
+    let cashflow = { entries: [], days: {}, counts: {} };   // days[dateKey] = { openingCash, countedCash }; counts = bảng đếm tiền (dùng chung, không reset theo ngày)
     let cfDate = getLocalDateKey();
     let cfType = 'out';
     let cfDbWarned = false;
@@ -2440,24 +2440,58 @@
     }
 
     async function loadCashflow() {
-      let local = { entries: [], days: {} };
+      let local = { entries: [], days: {}, counts: {} };
       try {
         const raw = localStorage.getItem(CASHFLOW_STORAGE_KEY);
         if (raw) local = Object.assign(local, JSON.parse(raw));
       } catch (e) {}
+      if (!local.counts) local.counts = {};
       cashflow = local;
-      if (!dbReady()) return;
+      if (!dbReady()) { cfMigrateLegacyCounts(); return; }
       try {
         const rows = await fetchAllRows(CASHFLOW_TABLE);
         if (rows.length > 0) {
-          cashflow = { entries: [], days: {} };
+          const keepCounts = cashflow.counts || {};
+          cashflow = { entries: [], days: {}, counts: null };
           rows.forEach(r => {
             if (r.kind === 'entry') cashflow.entries.push(r);
-            else if (r.kind === 'day') cashflow.days[r.dateKey] = { openingCash: r.openingCash, countedCash: r.countedCash, counts: r.counts || {} };
+            else if (r.kind === 'counts') { cashflow.counts = r.counts || {}; cashflow.countsFromDb = true; }
+            else if (r.kind === 'day') cashflow.days[r.dateKey] = { openingCash: r.openingCash, countedCash: r.countedCash, legacyCounts: r.counts || {} };
           });
+          if (!cashflow.counts) cashflow.counts = keepCounts;
           cfSaveLocal();
         }
       } catch (err) { cfWarnOnce(err); }
+      cfMigrateLegacyCounts();
+    }
+
+    // Chuyển số tờ cũ (lưu theo từng ngày) sang bảng đếm dùng chung: lấy ngày mới nhất có dữ liệu
+    function cfMigrateLegacyCounts() {
+      let done = false;
+      try { done = localStorage.getItem('osix_cf_counts_migrated_v1') === '1'; } catch (e) {}
+      if (done || cashflow.countsFromDb) return;
+      try { localStorage.setItem('osix_cf_counts_migrated_v1', '1'); } catch (e) {}
+      if (Object.keys(cashflow.counts || {}).length > 0) return;
+      const keys = Object.keys(cashflow.days).sort().reverse();
+      for (const k of keys) {
+        const d = cashflow.days[k];
+        const old = d.counts || d.legacyCounts;
+        if (old && Object.keys(old).length > 0) {
+          cashflow.counts = Object.assign({}, old);
+          cfSaveLocal();
+          cfPersistCounts();
+          return;
+        }
+      }
+    }
+
+    let cfCountsTimer = null;
+    function cfPersistCounts() {
+      cfSaveLocal();
+      clearTimeout(cfCountsTimer);
+      cfCountsTimer = setTimeout(() => {
+        cfDbUpsert({ id: 'COUNTS', kind: 'counts', dateKey: getLocalDateKey(), counts: cashflow.counts || {}, updatedAt: new Date().toISOString() });
+      }, 600);
     }
 
     async function cfDbUpsert(obj) {
@@ -2575,13 +2609,13 @@
       const opening = document.getElementById('cf-opening').value;
       const counted = document.getElementById('cf-counted').value;
       const prevDay = cashflow.days[cfDate] || {};
-      cashflow.days[cfDate] = { openingCash: opening === '' ? '' : Number(opening), countedCash: counted === '' ? '' : Number(counted), counts: prevDay.counts || {} };
+      cashflow.days[cfDate] = { openingCash: opening === '' ? '' : Number(opening), countedCash: counted === '' ? '' : Number(counted) };
       renderCashflow(true);
       clearTimeout(cfSaveTimer);
       const dateKey = cfDate;
       cfSaveTimer = setTimeout(() => {
         const d = cashflow.days[dateKey];
-        cfDbUpsert({ id: 'DAY-' + dateKey, kind: 'day', dateKey, openingCash: d.openingCash, countedCash: d.countedCash, counts: d.counts || {} });
+        cfDbUpsert({ id: 'DAY-' + dateKey, kind: 'day', dateKey, openingCash: d.openingCash, countedCash: d.countedCash });
       }, 600);
     }
 
@@ -2601,16 +2635,15 @@
     ];
 
     function cfGetCounts() {
-      const d = cashflow.days[cfDate];
-      return (d && d.counts) ? d.counts : {};
+      if (!cashflow.counts) cashflow.counts = {};
+      return cashflow.counts;
     }
 
     function cfEnsureDay() {
       if (!cashflow.days[cfDate]) {
         const r = cfDayRecord(cfDate);
-        cashflow.days[cfDate] = { openingCash: r.openingCash, countedCash: r.countedCash, counts: {} };
+        cashflow.days[cfDate] = { openingCash: r.openingCash, countedCash: r.countedCash };
       }
-      if (!cashflow.days[cfDate].counts) cashflow.days[cfDate].counts = {};
       return cashflow.days[cfDate];
     }
 
@@ -2619,7 +2652,7 @@
       const dateKey = cfDate;
       cfSaveTimer = setTimeout(() => {
         const d = cashflow.days[dateKey];
-        if (d) cfDbUpsert({ id: 'DAY-' + dateKey, kind: 'day', dateKey, openingCash: d.openingCash, countedCash: d.countedCash, counts: d.counts || {} });
+        if (d) cfDbUpsert({ id: 'DAY-' + dateKey, kind: 'day', dateKey, openingCash: d.openingCash, countedCash: d.countedCash });
       }, 600);
       cfSaveLocal();
     }
@@ -2664,10 +2697,10 @@
 
     function cfSetCount(v, raw) {
       const n = Math.max(0, Math.floor(Number(raw) || 0));
-      const day = cfEnsureDay();
-      if (n === 0) delete day.counts[v]; else day.counts[v] = n;
+      const counts = cfGetCounts();
+      if (n === 0) delete counts[v]; else counts[v] = n;
       cfUpdateDenomTotals();
-      cfPersistDay();
+      cfPersistCounts();
     }
 
     function cfStepCount(v, delta) {
@@ -2679,11 +2712,10 @@
     }
 
     function cfClearCounts() {
-      const day = cashflow.days[cfDate];
-      if (!day || !day.counts || Object.keys(day.counts).length === 0) return;
-      if (!confirm('Xóa toàn bộ số tờ đã nhập của ngày này?')) return;
-      day.counts = {};
-      cfPersistDay();
+      if (Object.keys(cfGetCounts()).length === 0) return;
+      if (!confirm('Xóa toàn bộ số tờ đã nhập trong bảng đếm tiền?')) return;
+      cashflow.counts = {};
+      cfPersistCounts();
       renderDenomTable();
     }
 
