@@ -108,6 +108,10 @@
 </head>
 <body class="bg-cream-100 text-espresso-900 font-sans antialiased selection:bg-espresso-200 selection:text-espresso-900 overflow-x-hidden">
 
+  
+  <!-- Hiệu ứng ly cafe rơi ở nền -->
+  <canvas id="cafe-canvas" aria-hidden="true" style="position:fixed;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none;"></canvas>
+
   <!-- Toast Notification Container -->
   <div id="toast-container" class="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none max-w-[90vw] sm:max-w-sm"></div>
 
@@ -165,6 +169,18 @@
           <span>Thu chi</span>
         </button>
       </nav>
+
+      <!-- Nút bật/tắt hiệu ứng ly cafe rơi -->
+      <button
+        id="cafe-toggle"
+        type="button"
+        title="Bật/tắt ly cafe rơi"
+        aria-label="Bật/tắt hiệu ứng ly cafe rơi"
+        aria-pressed="true"
+        class="shrink-0 w-10 h-10 rounded-xl border border-espresso-700 bg-espresso-800/90 hover:bg-espresso-700 flex items-center justify-center text-lg transition-all"
+      >
+        <span id="cafe-toggle-icon" class="transition-all">☕</span>
+      </button>
 
       <!-- Live Clock & Quick Revenue Pill (Desktop) -->
       <div class="hidden xl:flex items-center gap-3 text-xs">
@@ -5120,6 +5136,197 @@
 
     // Start app on DOM ready
     window.addEventListener('DOMContentLoaded', initApp);
+  </script>
+
+  <script>
+    /* Hiệu ứng ly cafe rơi (canvas, nằm sau nội dung, không chặn thao tác) */
+    (function () {
+      const canvas = document.getElementById('cafe-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduceMotion) {
+        canvas.style.display = 'none';
+        const tb = document.getElementById('cafe-toggle');
+        if (tb) tb.style.display = 'none';
+        return;
+      }
+
+      let w = 0, h = 0, dpr = 1, cups = [], last = 0, rafId = null;
+
+      // [thân ly, viền/quai, đĩa lót]
+      const STYLES = [
+        ['#FAF5EC', '#B88B72', '#E8D5B7'],  // sứ trắng kem
+        ['#D9A066', '#9E694D', '#E8D5B7'],  // nâu caramel
+        ['#9E694D', '#653C2A', '#D2B5A3'],  // nâu espresso
+        ['#F3E8D6', '#825038', '#D2B5A3'],  // be nhạt
+        ['#8DBA9C', '#437259', '#E1EFE5']   // xanh matcha
+      ];
+
+      function targetCount() {
+        return Math.max(10, Math.min(28, Math.round((w * h) / 55000)));
+      }
+
+      function makeCup(initial) {
+        const size = 14 + Math.random() * 14;
+        return {
+          x: Math.random() * w,
+          y: initial ? Math.random() * h : -size * 2,
+          size: size,
+          speed: 30 + Math.random() * 40,          // px/giây
+          drift: (Math.random() - 0.5) * 16,       // trôi ngang nhẹ
+          swayAmp: 10 + Math.random() * 18,
+          swayFreq: 0.5 + Math.random() * 0.8,
+          phase: Math.random() * Math.PI * 2,
+          tiltAmp: 0.25 + Math.random() * 0.35,    // góc nghiêng lắc lư (rad)
+          alpha: 0.5 + Math.random() * 0.3,
+          style: STYLES[(Math.random() * STYLES.length) | 0],
+          steam: Math.random() < 0.6,
+          t: Math.random() * 10
+        };
+      }
+
+      function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        w = window.innerWidth;
+        h = window.innerHeight;
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const n = targetCount();
+        while (cups.length < n) cups.push(makeCup(true));
+        if (cups.length > n) cups.length = n;
+      }
+
+      function drawCup(c) {
+        const s = c.size;
+        const tilt = Math.sin(c.t * c.swayFreq + c.phase) * c.tiltAmp;
+        const body = c.style[0], line = c.style[1], saucer = c.style[2];
+
+        ctx.save();
+        ctx.translate(c.x, c.y);
+        ctx.rotate(tilt);
+        ctx.globalAlpha = c.alpha;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // Hơi nóng
+        if (c.steam) {
+          ctx.strokeStyle = line;
+          ctx.globalAlpha = c.alpha * 0.55;
+          ctx.lineWidth = Math.max(1, s * 0.07);
+          const wob = Math.sin(c.t * 2 + c.phase) * s * 0.06;
+          for (let k = -1; k <= 1; k += 2) {
+            ctx.beginPath();
+            ctx.moveTo(k * s * 0.22, -s * 0.55);
+            ctx.bezierCurveTo(k * s * 0.22 + wob + s * 0.12, -s * 0.8,
+                              k * s * 0.22 - wob - s * 0.12, -s * 0.95,
+                              k * s * 0.22 + wob, -s * 1.2);
+            ctx.stroke();
+          }
+          ctx.globalAlpha = c.alpha;
+        }
+
+        // Đĩa lót
+        ctx.fillStyle = saucer;
+        ctx.strokeStyle = line;
+        ctx.lineWidth = Math.max(1, s * 0.05);
+        ctx.beginPath();
+        ctx.ellipse(0, s * 0.66, s * 0.88, s * 0.13, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Quai ly
+        ctx.strokeStyle = line;
+        ctx.lineWidth = s * 0.13;
+        ctx.beginPath();
+        ctx.arc(s * 0.6, -s * 0.02, s * 0.26, -Math.PI / 2, Math.PI / 2);
+        ctx.stroke();
+
+        // Thân ly
+        ctx.fillStyle = body;
+        ctx.strokeStyle = line;
+        ctx.lineWidth = Math.max(1, s * 0.06);
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.62, -s * 0.4);
+        ctx.lineTo(s * 0.62, -s * 0.4);
+        ctx.bezierCurveTo(s * 0.62, s * 0.3, s * 0.4, s * 0.62, 0, s * 0.62);
+        ctx.bezierCurveTo(-s * 0.4, s * 0.62, -s * 0.62, s * 0.3, -s * 0.62, -s * 0.4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Mặt cafe
+        ctx.fillStyle = '#4A2B1E';
+        ctx.beginPath();
+        ctx.ellipse(0, -s * 0.4, s * 0.62, s * 0.14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function frame(now) {
+        rafId = requestAnimationFrame(frame);
+        const dt = Math.min((now - (last || now)) / 1000, 0.05);
+        last = now;
+        ctx.clearRect(0, 0, w, h);
+
+        for (let i = 0; i < cups.length; i++) {
+          const c = cups[i];
+          c.t += dt;
+          c.y += c.speed * dt;
+          c.x += (c.drift + Math.cos(c.t * c.swayFreq + c.phase) * c.swayAmp * 0.5) * dt;
+
+          if (c.y - c.size * 2 > h || c.x < -60 || c.x > w + 60) {
+            cups[i] = makeCup(false);
+            continue;
+          }
+          drawCup(c);
+        }
+      }
+
+      const STORAGE_KEY = 'osix-cafe-fall-enabled';
+      const toggleBtn = document.getElementById('cafe-toggle');
+      const toggleIcon = document.getElementById('cafe-toggle-icon');
+      let enabled = true;
+      try { enabled = localStorage.getItem(STORAGE_KEY) !== '0'; } catch (e) {}
+
+      function start() { if (enabled && !document.hidden && !rafId) { last = 0; rafId = requestAnimationFrame(frame); } }
+      function stop() { if (rafId) { cancelAnimationFrame(rafId); rafId = null; } }
+
+      function applyState() {
+        canvas.style.display = enabled ? 'block' : 'none';
+        if (!enabled) { stop(); ctx.clearRect(0, 0, w, h); }
+        if (toggleBtn) {
+          toggleBtn.setAttribute('aria-pressed', String(enabled));
+          toggleBtn.title = enabled ? 'Tắt ly cafe rơi' : 'Bật ly cafe rơi';
+          toggleBtn.style.opacity = enabled ? '1' : '0.55';
+        }
+        if (toggleIcon) toggleIcon.style.filter = enabled ? 'none' : 'grayscale(1)';
+      }
+
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', function () {
+          enabled = !enabled;
+          try { localStorage.setItem(STORAGE_KEY, enabled ? '1' : '0'); } catch (e) {}
+          applyState();
+          start();
+          if (typeof showToast === 'function') {
+            showToast(enabled ? 'Đã bật hiệu ứng ly cafe rơi' : 'Đã tắt hiệu ứng ly cafe rơi');
+          }
+        });
+      }
+
+      window.addEventListener('resize', resize);
+      document.addEventListener('visibilitychange', function () {
+        document.hidden ? stop() : start();
+      });
+
+      resize();
+      applyState();
+      start();
+    })();
   </script>
 </body>
 </html>
