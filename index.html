@@ -966,6 +966,27 @@
         </div>
 
         <div class="bg-white rounded-2xl border border-espresso-200 shadow-xs overflow-hidden">
+          <div class="p-4 sm:p-5 border-b border-espresso-100 bg-cream-50/60">
+            <h3 class="font-bold text-espresso-900 text-base">Tổng kết cả tháng</h3>
+            <p id="cf-month-label" class="text-xs text-espresso-500"></p>
+          </div>
+          <div class="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="rounded-xl bg-matcha-50 border border-matcha-200 p-3">
+              <p class="text-[11px] uppercase font-bold text-espresso-500">Tổng thu</p>
+              <p id="cf-month-in" class="text-lg font-extrabold mt-1 text-matcha-700">0đ</p>
+            </div>
+            <div class="rounded-xl bg-rose-50 border border-rose-200 p-3">
+              <p class="text-[11px] uppercase font-bold text-espresso-500">Tổng chi</p>
+              <p id="cf-month-out" class="text-lg font-extrabold mt-1 text-rose-700">0đ</p>
+            </div>
+            <div class="rounded-xl bg-cream-50 border border-espresso-200 p-3">
+              <p class="text-[11px] uppercase font-bold text-espresso-500">Lãi / lỗ</p>
+              <p id="cf-month-profit" class="text-lg font-extrabold mt-1">0đ</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-espresso-200 shadow-xs overflow-hidden">
           <div class="p-4 sm:p-5 border-b border-espresso-100 bg-cream-50/60 flex items-center justify-between gap-2">
             <div>
               <h3 class="font-bold text-espresso-900 text-base">7 ngày gần nhất</h3>
@@ -2618,6 +2639,25 @@
             <div class="font-extrabold text-sm ${en.type === 'in' ? 'text-matcha-700' : 'text-rose-700'}">${en.type === 'in' ? '+' : '−'}${formatVND(en.amount)}</div>
             <button onclick="cfDeleteEntry('${en.id}')" class="w-8 h-8 rounded-lg text-espresso-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center" title="Xóa"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
           </div>`).join('');
+
+      // Tổng kết cả tháng (tháng của ngày đang xem)
+      {
+        const [yy, mm] = cfDate.split('-').map(Number);
+        const dim = new Date(yy, mm, 0).getDate();
+        let mIn = 0, mOut = 0;
+        for (let day = 1; day <= dim; day++) {
+          const k = `${yy}-${String(mm).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const x = cfComputeDay(k);
+          mIn += x.totalIn; mOut += x.totalOut;
+        }
+        const mProfit = mIn - mOut;
+        document.getElementById('cf-month-label').textContent = `Tháng ${String(mm).padStart(2, '0')}/${yy} • từ 01 đến ${String(dim).padStart(2, '0')}`;
+        document.getElementById('cf-month-in').textContent = formatVND(mIn);
+        document.getElementById('cf-month-out').textContent = formatVND(mOut);
+        const mp = document.getElementById('cf-month-profit');
+        mp.textContent = cfSigned(mProfit).replace('+', '');
+        mp.className = 'text-lg font-extrabold mt-1 ' + cfColorClass(mProfit);
+      }
 
       // 7 ngày gần nhất (kết thúc tại ngày đang xem)
       const body = document.getElementById('cf-week-body');
