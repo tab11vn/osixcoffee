@@ -225,16 +225,16 @@
             <span>Hiển thị <strong id="menu-count-label" class="text-espresso-900">0</strong> món</span>
           </div>
 
-          <!-- Nút tự động nạp & đồng bộ ảnh từ G:\My Drive\caphe\pic theo tên sản phẩm -->
+          <!-- Nút tự động nạp & đồng bộ ảnh từ G:\My Drive\app cam do GỐC\caphe\pic theo tên sản phẩm -->
           <div class="flex items-center gap-1">
             <button
               type="button"
               id="sync-pic-folder-btn"
               onclick="syncProductImagesFromPicFolder(false)"
-              title="Tự động nạp ảnh từ G:\My Drive\caphe\pic khi tên ảnh trùng tên sản phẩm"
+              title="Tự động nạp ảnh từ G:\My Drive\app cam do GỐC\caphe\pic khi tên ảnh trùng tên sản phẩm"
               class="flex items-center gap-1.5 text-xs font-semibold text-espresso-700 hover:text-white bg-white hover:bg-espresso-900 px-3 py-2.5 rounded-xl border border-espresso-200 shadow-sm transition-colors cursor-pointer"
             >
-              <span id="pic-sync-dot" class="hidden w-2 h-2 rounded-full bg-matcha-500 shrink-0" title="Đã kết nối tự động với thư mục G:\My Drive\caphe\pic"></span>
+              <span id="pic-sync-dot" class="hidden w-2 h-2 rounded-full bg-matcha-500 shrink-0" title="Đã kết nối tự động với thư mục G:\My Drive\app cam do GỐC\caphe\pic"></span>
               <i data-lucide="refresh-cw" class="w-4 h-4 text-amber-600"></i>
               <span>Nạp ảnh</span>
               <span id="loaded-images-badge" class="hidden bg-matcha-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full">0</span>
@@ -242,7 +242,7 @@
             <button
               type="button"
               onclick="syncProductImagesFromPicFolder(true)"
-              title="Chọn / đổi thư mục ảnh (G:\My Drive\caphe\pic)"
+              title="Chọn / đổi thư mục ảnh (G:\My Drive\app cam do GỐC\caphe\pic)"
               class="p-2.5 text-espresso-600 hover:text-white bg-white hover:bg-espresso-900 rounded-xl border border-espresso-200 shadow-sm transition-colors cursor-pointer"
             >
               <i data-lucide="folder-cog" class="w-4 h-4"></i>
@@ -1295,7 +1295,7 @@
       { id: 'sd-6', name: 'Soda Cam Vàng', category: 'Soda', price: 20000, emoji: '🧊', desc: 'Soda cam mát lạnh sảng khoái' },
 
       // 7. Sữa Chua
-      { id: 'sc-1', name: 'Sữa chua Việt Quất', category: 'Sữa Chua', price: 25000, emoji: '🍨', desc: 'Vị sữa chua sánh mịn, béo nhẹ hòa quyện cùng sốt việt quất chua ngọt tự nhiên' },
+      { id: 'sc-1', name: 'Sữa chua Việt Quất', category: 'Sữa Chua', price: 25000, emoji: '', desc: 'Vị sữa chua sánh mịn, béo nhẹ hòa quyện cùng sốt việt quất chua ngọt tự nhiên' },
       { id: 'sc-1', name: 'Sữa chua Mãng Cầu', category: 'Sữa Chua', price: 25000, emoji: '🍨', desc: 'Sữa chua lên men tự nhiên lắc cùng đá mịn mát lạnh' },
       { id: 'sc-2', name: 'Chanh đá sữa', category: 'Sữa Chua', price: 20000, emoji: '🍋', desc: 'Chanh tươi mát lạnh kết hợp sữa chua sánh mịn' },
       { id: 'sc-3', name: 'Đào sữa lắc', category: 'Sữa Chua', price: 20000, emoji: '🍑', desc: 'Đào thơm ngọt lắc cùng sữa chua mát lạnh' },
@@ -2008,9 +2008,9 @@
       showToast(`Đã khôi phục mặc định cho "${item ? item.name : itemId}"`, 'info');
     }
 
-    // Danh sách nguồn ảnh ưu tiên theo quy tắc tự động khớp tên sản phẩm trong thư mục pic (G:\My Drive\caphe\pic):
-    // 1. Ảnh đã đồng bộ tự động từ thư mục G:\My Drive\caphe\pic (IndexedDB)
-    // 2. Đường dẫn tương đối pic/<Tên sản phẩm>.(png|jpg|jpeg|webp) khi đặt file web tại G:\My Drive\caphe\
+    // Danh sách nguồn ảnh ưu tiên theo quy tắc tự động khớp tên sản phẩm trong thư mục pic (G:\My Drive\app cam do GỐC\caphe\pic):
+    // 1. Ảnh đã đồng bộ tự động từ thư mục G:\My Drive\app cam do GỐC\caphe\pic (IndexedDB)
+    // 2. Đường dẫn tương đối pic/<Tên sản phẩm>.(png|jpg|jpeg|webp) khi đặt file web tại G:\My Drive\app cam do GỐC\caphe\pic
     // 3. Ảnh dự phòng images/<id>.jpg -> emoji
     function getProductImageCandidates(item) {
       if (!item) return [];
@@ -2114,7 +2114,7 @@
       return null;
     }
 
-    // ==================== TỰ ĐỘNG ĐỒNG BỘ ẢNH TỪ G:\My Drive\caphe\pic ====================
+    // ==================== TỰ ĐỘNG ĐỒNG BỘ ẢNH TỪ G:\My Drive\app cam do GỐC\caphe\pic ====================
     const TARGET_PIC_FOLDER_PATH = 'G:\\My Drive\\caphe\\pic';
     const PIC_FOLDER_HANDLE_KEY = 'pic_caphe_dir';
     const PIC_SYNC_META_STORAGE_KEY = 'osix_pic_folder_sync_meta_v1';
