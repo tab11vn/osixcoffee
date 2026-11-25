@@ -26,7 +26,7 @@
           },
           colors: {
             espresso: {
-              50: '#FBF8F6',
+              50: '#FF0000',
               100: '#F4EDE8',
               200: '#E6D6CC',
               300: '#D2B5A3',
@@ -64,9 +64,9 @@
     }
     ::-webkit-scrollbar-track {
       background: transparent;
-    }
+    } 
     ::-webkit-scrollbar-thumb {
-      background: #D2B5A3;
+      background: #a17e57;
       border-radius: 9999px;
     }
     ::-webkit-scrollbar-thumb:hover {
@@ -178,6 +178,19 @@
         class="shrink-0 w-10 h-10 rounded-xl border border-espresso-700 bg-espresso-800/90 hover:bg-espresso-700 flex items-center justify-center text-lg transition-all"
       >
         <span id="cafe-toggle-icon" class="transition-all">☕</span>
+      </button>
+
+      <!-- Nút chụp báo cáo trong ngày (nguyên liệu + đơn hàng + thu chi) -->
+      <button
+        id="snapshot-day-btn"
+        type="button"
+        onclick="openSnapshotPicker()"
+        title="Chụp ảnh lịch sử nguyên liệu, lịch sử đơn và thu chi trong ngày"
+        aria-label="Chụp báo cáo trong ngày"
+        class="shrink-0 h-10 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all"
+      >
+        <i data-lucide="camera" class="w-4 h-4"></i>
+        <span class="hidden md:inline">Chụp ngày</span>
       </button>
 
       <!-- Live Clock & Quick Revenue Pill (Desktop) -->
@@ -1180,6 +1193,26 @@
   </div>
 
   <!-- ==================== MODAL 2: RECEIPT PREVIEW MODAL ==================== -->
+  <div id="snapshot-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-espresso-950/70 backdrop-blur-xs p-4" onclick="if(event.target===this)closeSnapshotPicker()">
+    <div class="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="font-extrabold text-espresso-900 text-base flex items-center gap-2"><i data-lucide="camera" class="w-4 h-4"></i> Chụp báo cáo ngày</h3>
+        <button type="button" onclick="closeSnapshotPicker()" class="w-8 h-8 rounded-lg text-espresso-400 hover:bg-cream-100 flex items-center justify-center" aria-label="Đóng"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div class="space-y-1.5">
+        <label for="snapshot-date" class="text-xs font-bold text-espresso-700">Chọn ngày cần chụp</label>
+        <input id="snapshot-date" type="date" class="w-full px-3 py-2.5 rounded-xl border border-espresso-200 text-sm font-semibold text-espresso-900 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        <div class="flex gap-2 pt-1">
+          <button type="button" onclick="setSnapshotDate(0)" class="px-3 py-1.5 rounded-lg bg-cream-100 hover:bg-cream-200 text-espresso-800 text-xs font-bold">Hôm nay</button>
+          <button type="button" onclick="setSnapshotDate(-1)" class="px-3 py-1.5 rounded-lg bg-cream-100 hover:bg-cream-200 text-espresso-800 text-xs font-bold">Hôm qua</button>
+        </div>
+      </div>
+      <button type="button" onclick="confirmSnapshot()" class="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold flex items-center justify-center gap-2">
+        <i data-lucide="camera" class="w-4 h-4"></i><span>Chụp & lưu ảnh</span>
+      </button>
+    </div>
+  </div>
+
   <div id="receipt-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-espresso-950/70 backdrop-blur-xs p-3 sm:p-4">
     <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-espresso-200 overflow-hidden flex flex-col max-h-[92vh]">
       
@@ -4563,6 +4596,206 @@
         }
       };
       reader.readAsDataURL(file);
+    }
+
+    // ==================== CHỤP BÁO CÁO TRONG NGÀY ====================
+    // Chọn ngày theo màn hình đang xem: Thu chi → ngày đang chọn; Lịch sử/Nguyên liệu → ngày đang lọc; còn lại → hôm nay
+    function getDailyReportDateKey() {
+      const visible = (id) => { const el = document.getElementById(id); return el && !el.classList.contains('hidden'); };
+      if (visible('view-cashflow') && cfDate) return cfDate;
+      if (visible('view-history') && state.historyFilterDate) return state.historyFilterDate;
+      if (visible('view-ingredients') && state.ingredientFilterDate) return state.ingredientFilterDate;
+      return getLocalDateKey();
+    }
+
+    function buildDailyReportHTML(dateKey) {
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const c = cfComputeDay(dateKey);
+      const ings = state.ingredientsHistory.filter(i => i.dateKey === dateKey)
+        .slice().sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+      const orders = c.orders.slice().sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+      const timeOf = (iso) => iso ? new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '';
+      const signed = (n) => (n < 0 ? '-' : '') + formatVND(Math.abs(n));
+
+      const th = 'text-align:left;padding:6px 8px;background:#f3ece4;color:#4a3426;font-size:12px;font-weight:700;';
+      const td = 'padding:6px 8px;border-bottom:1px solid #eee3d8;font-size:12.5px;color:#2b1d14;vertical-align:top;';
+      const num = 'text-align:right;white-space:nowrap;font-weight:700;';
+      const h2 = (t, color) => `<div style="margin:22px 0 8px;font-size:15px;font-weight:800;color:${color};border-left:4px solid ${color};padding-left:8px;">${t}</div>`;
+      const empty = (t) => `<div style="padding:10px;font-size:12.5px;color:#8a7767;background:#faf6f1;border-radius:8px;">${t}</div>`;
+      const stat = (label, val, color) => `
+        <div style="flex:1;min-width:0;background:#faf6f1;border:1px solid #eee3d8;border-radius:10px;padding:10px 12px;">
+          <div style="font-size:11px;color:#8a7767;font-weight:600;">${label}</div>
+          <div style="font-size:16px;font-weight:800;color:${color};margin-top:2px;">${val}</div>
+        </div>`;
+      const line = (label, val, color) => `
+        <tr><td style="${td}">${label}</td><td style="${td}${num}color:${color};">${val}</td></tr>`;
+
+      // 1. Thu chi
+      const counted = c.rec.countedCash;
+      const hasCounted = counted !== '' && counted != null;
+      const diff = hasCounted ? Number(counted) - c.expectedCash : 0;
+      const manualRows = c.entries.slice().sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || '')).map(en => `
+        <tr>
+          <td style="${td}">${timeOf(en.createdAt)}</td>
+          <td style="${td}">${esc(en.category)}${en.note ? ' <span style="color:#8a7767;">• ' + esc(en.note) + '</span>' : ''}</td>
+          <td style="${td}${num}color:${en.type === 'in' ? '#3f7a3a' : '#be123c'};">${en.type === 'in' ? '+' : '−'}${formatVND(en.amount)}</td>
+        </tr>`).join('');
+
+      const cashflowHtml = `
+        ${h2('THU CHI TRONG NGÀY', '#7a4a21')}
+        <div style="display:flex;gap:8px;">
+          ${stat('Tổng thu', formatVND(c.totalIn), '#3f7a3a')}
+          ${stat('Tổng chi', formatVND(c.totalOut), '#be123c')}
+          ${stat('Lợi nhuận', signed(c.profit), c.profit < 0 ? '#be123c' : '#3f7a3a')}
+          ${stat('Két dự kiến', formatVND(c.expectedCash), '#2b1d14')}
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin-top:8px;">
+          ${line('Tiền đầu ngày', formatVND(c.opening), '#2b1d14')}
+          ${line(`Bán tiền mặt (${orders.filter(o => o.paymentMethod === 'cash').length} đơn)`, formatVND(c.cashSales), '#3f7a3a')}
+          ${line(`Bán chuyển khoản / QR (${orders.filter(o => o.paymentMethod === 'qr').length} đơn)`, formatVND(c.qrSales), '#3f7a3a')}
+          ${c.otherIn ? line('Thu khác', formatVND(c.otherIn), '#3f7a3a') : ''}
+          ${line('Nhập nguyên liệu', formatVND(c.ingCost), '#be123c')}
+          ${line('Chi khác', formatVND(c.otherOut), '#be123c')}
+          ${hasCounted ? line('Tiền đếm được trong két', formatVND(counted), '#2b1d14') : ''}
+          ${hasCounted ? line(diff === 0 ? 'Két khớp số liệu' : diff > 0 ? 'Két thừa' : 'Két thiếu', diff === 0 ? '0đ' : (diff > 0 ? '+' : '−') + formatVND(Math.abs(diff)), diff === 0 ? '#3f7a3a' : '#be123c') : ''}
+        </table>
+        ${c.entries.length ? `
+        <div style="margin-top:12px;font-size:12px;font-weight:700;color:#4a3426;">Các khoản thu chi ghi tay</div>
+        <table style="width:100%;border-collapse:collapse;margin-top:4px;">
+          <tr><th style="${th}width:60px;">Giờ</th><th style="${th}">Nội dung</th><th style="${th}text-align:right;">Số tiền</th></tr>
+          ${manualRows}
+        </table>` : ''}`;
+
+      // 2. Nguyên liệu
+      const ingTotal = ings.reduce((s, i) => s + (Number(i.totalCost) || 0), 0);
+      const ingHtml = `
+        ${h2(`LỊCH SỬ NHẬP NGUYÊN LIỆU (${ings.length} phiếu)`, '#3f7a3a')}
+        ${ings.length === 0 ? empty('Không có phiếu nhập nguyên liệu trong ngày.') : `
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><th style="${th}width:60px;">Giờ</th><th style="${th}">Nguyên liệu</th><th style="${th}text-align:right;">SL</th><th style="${th}text-align:right;">Đơn giá</th><th style="${th}text-align:right;">Thành tiền</th></tr>
+          ${ings.map(i => `
+            <tr>
+              <td style="${td}">${timeOf(i.createdAt)}</td>
+              <td style="${td}">${esc(i.name)}${i.note ? ' <span style="color:#8a7767;">• ' + esc(i.note) + '</span>' : ''}</td>
+              <td style="${td}${num}">${esc(i.qty)} ${esc(i.unit)}</td>
+              <td style="${td}text-align:right;white-space:nowrap;">${formatVND(i.unitPrice)}</td>
+              <td style="${td}${num}">${formatVND(i.totalCost)}</td>
+            </tr>`).join('')}
+          <tr><td colspan="4" style="${td}text-align:right;font-weight:800;">Tổng chi nguyên liệu</td><td style="${td}${num}color:#be123c;">${formatVND(ingTotal)}</td></tr>
+        </table>`}`;
+
+      // 3. Đơn hàng
+      const totalCups = orders.reduce((s, o) => s + (Array.isArray(o.items) ? o.items.reduce((a, i) => a + (Number(i.qty) || 0), 0) : 0), 0);
+      const orderHtml = `
+        ${h2(`LỊCH SỬ ĐƠN HÀNG (${orders.length} đơn • ${totalCups} món)`, '#b45309')}
+        ${orders.length === 0 ? empty('Không có đơn hàng trong ngày.') : `
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><th style="${th}width:60px;">Giờ</th><th style="${th}">Mã đơn / Món</th><th style="${th}">Thanh toán</th><th style="${th}text-align:right;">Tổng</th></tr>
+          ${orders.map(o => `
+            <tr>
+              <td style="${td}">${timeOf(o.createdAt)}</td>
+              <td style="${td}"><b>${esc(o.id)}</b><br><span style="color:#6b5646;">${(o.items || []).map(i => esc(i.name) + ' x' + esc(i.qty) + (i.cardSwapped ? ' (Đổi thẻ)' : '')).join(', ')}</span></td>
+              <td style="${td}white-space:nowrap;">${esc(o.paymentLabel || '')}</td>
+              <td style="${td}${num}">${formatVND(o.total)}</td>
+            </tr>`).join('')}
+          <tr><td colspan="3" style="${td}text-align:right;font-weight:800;">Tổng doanh thu</td><td style="${td}${num}color:#3f7a3a;">${formatVND(c.sales)}</td></tr>
+        </table>`}`;
+
+      return `
+        <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #7a4a21;padding-bottom:10px;">
+          <div>
+            <div style="font-size:22px;font-weight:900;color:#2b1d14;">O'SIX Coffee</div>
+            <div style="font-size:12px;color:#8a7767;">Báo cáo trong ngày</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:18px;font-weight:800;color:#7a4a21;">${formatDateKeyVN(dateKey)}</div>
+            <div style="font-size:11px;color:#8a7767;">Xuất lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
+          </div>
+        </div>
+        ${cashflowHtml}${ingHtml}${orderHtml}`;
+    }
+
+    function openSnapshotPicker() {
+      document.getElementById('snapshot-date').value = getDailyReportDateKey();
+      const m = document.getElementById('snapshot-modal');
+      m.classList.remove('hidden'); m.classList.add('flex');
+      lucide.createIcons({ nodes: [m] });
+    }
+    function closeSnapshotPicker() {
+      const m = document.getElementById('snapshot-modal');
+      m.classList.add('hidden'); m.classList.remove('flex');
+    }
+    function setSnapshotDate(delta) {
+      const d = new Date(); d.setDate(d.getDate() + delta);
+      document.getElementById('snapshot-date').value = getLocalDateKey(d);
+    }
+    function confirmSnapshot() {
+      const v = document.getElementById('snapshot-date').value;
+      if (!v) { showToast('Vui lòng chọn ngày!', 'error'); return; }
+      closeSnapshotPicker();
+      captureDailyReport(v);
+    }
+
+    async function captureDailyReport(selectedDateKey) {
+      const btn = document.getElementById('snapshot-day-btn');
+      if (typeof html2canvas !== 'function') {
+        showToast('Thư viện chụp ảnh chưa tải xong, vui lòng thử lại!', 'error');
+        return;
+      }
+      const dateKey = selectedDateKey || getDailyReportDateKey();
+      const originalBtnHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin shrink-0"></i><span class="hidden md:inline">Đang chụp...</span>`;
+      lucide.createIcons({ nodes: [btn] });
+
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'position:fixed;left:-9999px;top:0;width:760px;padding:24px;background:#ffffff;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#2b1d14;z-index:-1;';
+      wrap.innerHTML = buildDailyReportHTML(dateKey);
+      document.body.appendChild(wrap);
+
+      try {
+        const canvas = await html2canvas(wrap, { scale: 2, backgroundColor: '#ffffff', useCORS: false, allowTaint: false, logging: false });
+        const blob = await canvasToJpegBlob(canvas);
+        if (!blob) throw new Error('Không thể tạo ảnh');
+        const filename = `Bao-cao-ngay-${dateKey}.jpg`;
+
+        let saved = false;
+        if (typeof window.showDirectoryPicker === 'function') {
+          try {
+            const dirHandle = await getSavedCapheDirHandle();
+            if (dirHandle && (await dirHandle.queryPermission({ mode: 'readwrite' })) === 'granted') {
+              const fh = await dirHandle.getFileHandle(filename, { create: true });
+              const w = await fh.createWritable();
+              await w.write(blob);
+              await w.close();
+              saved = true;
+              showToast(`Đã lưu ${filename} vào ${TARGET_RECEIPT_FOLDER_PATH}`);
+            }
+          } catch (fsErr) {
+            console.warn('Không ghi trực tiếp vào thư mục được, chuyển sang tải tệp:', fsErr);
+          }
+        }
+        if (!saved) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.style.display = 'none';
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 3000);
+          showToast(`Đã tải ${filename} về thư mục Downloads`);
+        }
+      } catch (err) {
+        console.error('Lỗi chụp báo cáo ngày:', err);
+        showToast('Lỗi chụp báo cáo: ' + (err?.message || 'Vui lòng thử lại!'), 'error');
+      } finally {
+        wrap.remove();
+        btn.disabled = false;
+        btn.innerHTML = originalBtnHtml;
+        lucide.createIcons({ nodes: [btn] });
+      }
     }
 
     async function saveReceiptAsJPG(forceChooseFolder = false) {
