@@ -968,7 +968,10 @@
           </div>
           <div class="p-4 sm:p-5 space-y-4">
             <div>
-              <label for="cf-opening" class="block text-xs font-bold text-espresso-800 mb-1.5">Tiền mặt đầu ngày (VNĐ)</label>
+              <div class="flex items-center justify-between mb-1.5">
+                <label for="cf-opening" class="block text-xs font-bold text-espresso-800">Tiền mặt đầu ngày (VNĐ)</label>
+                <button type="button" id="cf-opening-lock" onclick="cfToggleOpeningLock()" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-colors"></button>
+              </div>
               <input type="number" id="cf-opening" min="0" step="1000" placeholder="0" oninput="cfSaveDayInputs()" class="w-full px-3.5 py-2.5 bg-cream-50 border border-espresso-200 rounded-xl text-sm font-bold text-espresso-900 focus:outline-none focus:ring-2 focus:ring-amber-500" />
               <p id="cf-opening-hint" class="text-[11px] text-espresso-500 mt-1"></p>
             </div>
@@ -2491,7 +2494,7 @@
           rows.forEach(r => {
             if (r.kind === 'entry') cashflow.entries.push(r);
             else if (r.kind === 'counts') { cashflow.counts = r.counts || {}; cashflow.countsFromDb = true; }
-            else if (r.kind === 'day') cashflow.days[r.dateKey] = { openingCash: r.openingCash, countedCash: r.countedCash, legacyCounts: r.counts || {} };
+            else if (r.kind === 'day') cashflow.days[r.dateKey] = { openingCash: r.openingCash, countedCash: r.countedCash, openingLocked: !!r.openingLocked, legacyCounts: r.counts || {} };
           });
           if (!cashflow.counts) cashflow.counts = keepCounts;
           cfSaveLocal();
@@ -2644,13 +2647,13 @@
       const opening = document.getElementById('cf-opening').value;
       const counted = document.getElementById('cf-counted').value;
       const prevDay = cashflow.days[cfDate] || {};
-      cashflow.days[cfDate] = { openingCash: opening === '' ? '' : Number(opening), countedCash: counted === '' ? '' : Number(counted) };
+      cashflow.days[cfDate] = { openingCash: opening === '' ? '' : Number(opening), countedCash: counted === '' ? '' : Number(counted), openingLocked: !!prevDay.openingLocked };
       renderCashflow(true);
       clearTimeout(cfSaveTimer);
       const dateKey = cfDate;
       cfSaveTimer = setTimeout(() => {
         const d = cashflow.days[dateKey];
-        cfDbUpsert({ id: 'DAY-' + dateKey, kind: 'day', dateKey, openingCash: d.openingCash, countedCash: d.countedCash });
+        cfDbUpsert({ id: 'DAY-' + dateKey, kind: 'day', dateKey, openingCash: d.openingCash, countedCash: d.countedCash, openingLocked: !!d.openingLocked });
       }, 600);
     }
 
@@ -2677,7 +2680,7 @@
     function cfEnsureDay() {
       if (!cashflow.days[cfDate]) {
         const r = cfDayRecord(cfDate);
-        cashflow.days[cfDate] = { openingCash: r.openingCash, countedCash: r.countedCash };
+        cashflow.days[cfDate] = { openingCash: r.openingCash, countedCash: r.countedCash, openingLocked: !!r.openingLocked };
       }
       return cashflow.days[cfDate];
     }
@@ -2687,7 +2690,7 @@
       const dateKey = cfDate;
       cfSaveTimer = setTimeout(() => {
         const d = cashflow.days[dateKey];
-        if (d) cfDbUpsert({ id: 'DAY-' + dateKey, kind: 'day', dateKey, openingCash: d.openingCash, countedCash: d.countedCash });
+        if (d) cfDbUpsert({ id: 'DAY-' + dateKey, kind: 'day', dateKey, openingCash: d.openingCash, countedCash: d.countedCash, openingLocked: !!d.openingLocked });
       }, 600);
       cfSaveLocal();
     }
@@ -2754,14 +2757,66 @@
       renderDenomTable();
     }
 
+    function cfNextDateKey(dateKey) {
+      const d = new Date(dateKey + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      return getLocalDateKey(d);
+    }
+
     function cfApplyCount(field) {
       const total = cfUpdateDenomTotals();
       if (total <= 0) { showToast('Chưa nhập số tờ nào', 'error'); return; }
       const day = cfEnsureDay();
+      if (field === 'openingCash' && day.openingLocked) {
+        showToast('Tiền đầu ngày đang bị khóa. Bấm nút khóa để mở.', 'error');
+        return;
+      }
       day[field] = total;
       cfPersistDay();
+      if (field === 'countedCash') {
+        // Chuyển tiền cuối ngày sang tiền đầu ngày của ngày hôm sau (và khóa lại)
+        const nextKey = cfNextDateKey(cfDate);
+        const next = cashflow.days[nextKey] || { openingCash: '', countedCash: '' };
+        next.openingCash = total;
+        next.openingLocked = true;
+        cashflow.days[nextKey] = next;
+        cfDbUpsert({ id: 'DAY-' + nextKey, kind: 'day', dateKey: nextKey, openingCash: next.openingCash, countedCash: next.countedCash, openingLocked: true });
+        renderCashflow();
+        showToast(`Đã chốt ${formatVND(total)} cuối ngày và chuyển sang tiền đầu ngày ${formatDateKeyVN(nextKey)}`);
+        return;
+      }
       renderCashflow();
-      showToast(`Đã điền ${formatVND(total)} vào ${field === 'openingCash' ? 'tiền đầu ngày' : 'tiền cuối ngày'}`);
+      showToast(`Đã điền ${formatVND(total)} vào tiền đầu ngày`);
+    }
+
+    function cfToggleOpeningLock() {
+      const day = cfEnsureDay();
+      if (!day.openingLocked) {
+        // Khi khóa mà ô đang trống nhưng có số gợi ý thì chốt luôn số gợi ý
+        if (day.openingCash === '' || day.openingCash == null) {
+          const r = cfDayRecord(cfDate);
+          if (r.suggested) day.openingCash = r.suggested;
+        }
+        day.openingLocked = true;
+        showToast('Đã khóa tiền mặt đầu ngày');
+      } else {
+        day.openingLocked = false;
+        showToast('Đã mở khóa tiền mặt đầu ngày', 'info');
+      }
+      cfPersistDay();
+      renderCashflow();
+    }
+
+    function cfRenderOpeningLock(locked) {
+      const input = document.getElementById('cf-opening');
+      const btn = document.getElementById('cf-opening-lock');
+      if (!input || !btn) return;
+      input.readOnly = locked;
+      input.classList.toggle('opacity-70', locked);
+      input.classList.toggle('cursor-not-allowed', locked);
+      btn.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-colors ' +
+        (locked ? 'bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100' : 'bg-cream-50 border-espresso-200 text-espresso-700 hover:bg-espresso-100');
+      btn.innerHTML = `<i data-lucide="${locked ? 'lock' : 'unlock'}" class="w-3.5 h-3.5"></i>${locked ? 'Đang khóa · Bấm để mở' : 'Khóa lại'}`;
     }
 
     function cfColorClass(n) { return n > 0 ? 'text-matcha-700' : n < 0 ? 'text-rose-700' : 'text-espresso-900'; }
@@ -2791,9 +2846,12 @@
       }
       const hint = document.getElementById('cf-opening-hint');
       const r = c.rec;
-      hint.textContent = (r.openingCash === '' || r.openingCash == null) && r.suggested
-        ? `Đang lấy tiền chốt két ngày ${formatDateKeyVN(r.suggestedFrom)}: ${formatVND(r.suggested)}. Nhập số khác nếu cần.`
-        : '';
+      hint.textContent = r.openingLocked
+        ? 'Đang khóa. Bấm nút khóa ở trên để mở nếu cần sửa.'
+        : ((r.openingCash === '' || r.openingCash == null) && r.suggested
+          ? `Đang lấy tiền chốt két ngày ${formatDateKeyVN(r.suggestedFrom)}: ${formatVND(r.suggested)}. Nhập số khác nếu cần.`
+          : '');
+      cfRenderOpeningLock(!!r.openingLocked);
 
       const diffBox = document.getElementById('cf-diff-box');
       const counted = document.getElementById('cf-counted').value;
